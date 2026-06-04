@@ -1,0 +1,105 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import KeyGate from "./components/KeyGate";
+import RateMeter from "./components/RateMeter";
+import GroupTree from "./components/GroupTree";
+import GroupDetail from "./components/GroupDetail";
+import ReplayBrowser from "./components/ReplayBrowser";
+import ReplayDetail from "./components/ReplayDetail";
+import Spinner from "./components/Spinner";
+import UpdateBadge from "./components/UpdateBadge";
+
+export default function App() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [me, setMe] = useState<{ id?: string | null; name?: string | null }>({});
+  const [isPrimaryUploader, setIsPrimaryUploader] = useState(true);
+  const [selectedGroup, setSelectedGroup] = useState<{ id: string; name: string } | null>(null);
+  const [browse, setBrowse] = useState(true); // global replay browser
+  const [openReplay, setOpenReplay] = useState<string | null>(null);
+  const [treeRefresh, setTreeRefresh] = useState(0);
+  const [sidebarW, setSidebarW] = useState(330);
+
+  useEffect(() => {
+    (async () => {
+      const st = await window.api.keyStatus();
+      if (st.hasKey) {
+        setMe({ id: st.identity?.steam_id, name: st.identity?.name });
+        setIsPrimaryUploader(st.isPrimaryUploader ?? true);
+        setAuthed(true);
+        return;
+      }
+      setAuthed(false);
+    })();
+  }, []);
+
+  // resizable sidebar
+  const dragging = useRef(false);
+  const onResizeDown = () => { dragging.current = true; document.body.style.cursor = "col-resize"; };
+  useEffect(() => {
+    const move = (e: MouseEvent) => { if (dragging.current) setSidebarW(Math.max(230, Math.min(620, e.clientX))); };
+    const up = () => { dragging.current = false; document.body.style.cursor = ""; };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
+  }, []);
+
+  const refreshTree = useCallback(() => setTreeRefresh((n) => n + 1), []);
+  const openGroup = (g: { id: string; name: string }) => { setSelectedGroup(g); setBrowse(false); setOpenReplay(null); };
+  const openBrowse = () => { setSelectedGroup(null); setBrowse(true); setOpenReplay(null); };
+
+  if (authed === null) return <div className="center"><Spinner label="Starting…" /></div>;
+  if (!authed) return <KeyGate onAuthed={async (identity) => {
+    const st = await window.api.keyStatus();
+    setMe({ id: identity?.steam_id, name: identity?.name });
+    setIsPrimaryUploader(st.isPrimaryUploader ?? true);
+    setAuthed(true);
+  }} />;
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <span className="title">Ballchasing Desktop</span>
+        <div className="spacer" />
+        <div className="legend"><span>low</span><span className="swatch" /><span>high</span></div>
+        <RateMeter />
+        <UpdateBadge />
+        <span className="identity">{me.name ? <>signed in as <b>{me.name}</b></> : "signed in"}{!isPrimaryUploader ? <span className="muted"> · viewing uploader's data</span> : null}</span>
+        <button onClick={async () => { await window.api.clearKey(); setAuthed(false); }}>Sign out</button>
+      </div>
+
+      <div className="body">
+        <div className="sidebar" style={{ width: sidebarW }}>
+          <div className={"browse-btn" + (browse ? " active" : "")} onClick={openBrowse}>🔎 Browse all replays</div>
+          <GroupTree
+            selectedId={selectedGroup?.id || null}
+            onSelect={(g) => { setSelectedGroup(g ? { id: g.id, name: g.name } : null); setBrowse(false); setOpenReplay(null); }}
+            refreshSignal={treeRefresh}
+          />
+        </div>
+        <div className="resizer" onMouseDown={onResizeDown} title="Drag to resize" />
+
+        <div className="content-host">
+          {openReplay ? (
+            <ReplayDetail id={openReplay} onBack={() => setOpenReplay(null)} />
+          ) : selectedGroup ? (
+            <div className="content">
+              <div className="toolbar">
+                <b>{selectedGroup.name}</b>
+                <span className="muted">group stats</span>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => window.api.openExternal(`https://ballchasing.com/group/${selectedGroup.id}`)}>Open on web ↗</button>
+              </div>
+              <GroupDetail groupId={selectedGroup.id} me={me} onOpenReplay={setOpenReplay} onGroupCreated={refreshTree} onOpenGroup={openGroup} />
+            </div>
+          ) : browse ? (
+            <ReplayBrowser me={me} isPrimaryUploader={isPrimaryUploader} onOpenReplay={setOpenReplay} onGroupCreated={refreshTree} onOpenGroup={openGroup} />
+          ) : (
+            <div className="content"><div className="empty-state">
+              <div>Select a group from the tree, or click <b>Browse all replays</b>.</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>Drag groups to re-parent (multi-select supported) · stat cells are heat-tinted · series are auto-detected in private-match replay lists.</div>
+            </div></div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
