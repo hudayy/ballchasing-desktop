@@ -71,15 +71,19 @@ function initPaths() {
 // API calls (the uploader's key when the user isn't their own uploader); identity
 // is always the logged-in user, used for player filtering + series naming.
 // ---------------------------------------------------------------------------
-let apiKey = null;          // active data key
-let identity = null;        // { steam_id, name }
+// The MANAGING key (config.loginKey) is always the active data key: groups,
+// replays, stats are all fetched with it, and identity comes from it. The
+// UPLOADING key (config.uploaderKey) is used ONLY to upload replays and to know
+// which SteamID to filter replays by (config.uploaderId).
+let apiKey = null;          // active data key == managing key
+let identity = null;        // { steam_id, name } of the managing account
 let config = {
-  loginKey: null,
-  uploaderKey: null,        // primary uploader's API key (optional)
-  uploaderId: null,         // primary uploader's SteamID64 (for filtering w/o a key)
+  loginKey: null,           // managing API key
+  uploaderKey: null,        // separate uploading API key (optional)
+  uploaderId: null,         // uploading account's SteamID64 (for the uploader filter)
   uploaderName: null,
   identity: null,
-  isPrimaryUploader: true,
+  separateAccounts: false,  // true => uses a separate uploading account
   demosFolder: null         // saved Rocket League Demos folder
 };
 
@@ -90,7 +94,7 @@ function loadConfig() {
     const text = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString("utf8");
     config = Object.assign(config, JSON.parse(text));
     identity = config.identity || null;
-    apiKey = config.isPrimaryUploader ? config.loginKey : (config.uploaderKey || config.loginKey);
+    apiKey = config.loginKey;   // managing key is always the data key
   } catch (e) { console.error("loadConfig failed", e); }
 }
 
@@ -105,15 +109,14 @@ function saveConfig() {
 function clearConfig() {
   apiKey = null; identity = null;
   const demos = config.demosFolder; // keep the demos folder across sign-out
-  config = { loginKey: null, uploaderKey: null, uploaderId: null, uploaderName: null, identity: null, isPrimaryUploader: true, demosFolder: demos };
+  config = { loginKey: null, uploaderKey: null, uploaderId: null, uploaderName: null, identity: null, separateAccounts: false, demosFolder: demos };
   saveConfig();
 }
 
-// The Steam ID used for the "uploader" replay filter, given the current mode.
+// The Steam ID used for the "uploader" replay filter. With a separate uploading
+// account, filter by that account's SteamID; otherwise the managing account ("me").
 function uploaderFilter() {
-  if (config.isPrimaryUploader) return "me";
-  if (config.uploaderKey) return "me";          // data key IS the uploader's
-  if (config.uploaderId) return String(config.uploaderId);
+  if (config.separateAccounts && config.uploaderId) return String(config.uploaderId);
   return "me";
 }
 
@@ -229,6 +232,11 @@ function authHeaders(extra) {
   return Object.assign({ Authorization: apiKey || "" }, extra || {});
 }
 
+// Uploads use the uploading account's key when separate accounts are configured.
+function uploadKey() {
+  return (config.separateAccounts && config.uploaderKey) ? config.uploaderKey : apiKey;
+}
+
 async function apiJson(method, pathAndQuery, body) {
   return enqueue(async () => {
     const res = await fetch(API_BASE + pathAndQuery, {
@@ -269,15 +277,14 @@ function registerIpc() {
   ipcMain.handle("key:status", () => ({
     hasKey: !!apiKey,
     identity,
-    isPrimaryUploader: config.isPrimaryUploader,
+    separateAccounts: config.separateAccounts,
     hasUploaderKey: !!config.uploaderKey,
     uploaderId: config.uploaderId,
     uploaderName: config.uploaderName,
     uploaderFilter: uploaderFilter()
   }));
 
-  // Sets the user's OWN login key. Establishes identity. Defaults to being the
-  // primary uploader (use uploader:set afterwards to point data at someone else).
+  // Sets the user's MANAGING key. Establishes identity and the active data key.
   ipcMain.handle("key:set", async (_e, key) => {
     const k = (key || "").trim();
     const prev = apiKey;
@@ -288,8 +295,10 @@ function registerIpc() {
       identity = { steam_id: ping && ping.steam_id, name: ping && ping.name };
       config.loginKey = k;
       config.identity = identity;
-      config.isPrimaryUploader = true;
+      config.separateAccounts = false;
       config.uploaderKey = null;
+      config.uploaderId = null;
+      config.uploaderName = null;
       saveConfig();
       return { ok: true, ping, tier, rps, identity };
     } catch (err) {
@@ -298,65 +307,19 @@ function registerIpc() {
     }
   });
 
-  // The user's 3 most-recent unique uploaders, from replays the user appears in.
-  // Always queried with the user's OWN key, regardless of the active data key.
-  ipcMain.handle("uploader:recent", async () => {
-    const key = config.loginKey;
-    if (!key || !identity) return { ok: false };
-    const fetchList = (params) => enqueue(async () => {
-      const res = await fetch(API_BASE + "/replays" + buildQuery(params), { headers: { Authorization: key } });
-      if (res.status === 429) { const e = new Error("rate"); e.status = 429; throw e; }
-      const t = await res.text(); try { return t ? JSON.parse(t) : null; } catch { return null; }
-    });
-    try {
-      let data = null;
-      if (identity.steam_id) data = await fetchList({ "player-id": "steam:" + identity.steam_id, count: 100, "sort-by": "upload-date", "sort-dir": "desc" });
-      if ((!data || !data.list || !data.list.length) && identity.name) data = await fetchList({ "player-name": identity.name, count: 100, "sort-by": "upload-date", "sort-dir": "desc" });
-      const seen = new Map();
-      for (const r of (data && data.list) || []) {
-        const u = r.uploader;
-        if (u && u.steam_id && !seen.has(u.steam_id)) seen.set(u.steam_id, { id: String(u.steam_id), name: u.name || String(u.steam_id) });
-        if (seen.size >= 3) break;
-      }
-      return { ok: true, uploaders: Array.from(seen.values()) };
-    } catch (err) { return { ok: false, error: err.message }; }
-  });
-
-  // Set primary uploader by SteamID64 (no key needed — public/unlisted replays
-  // are read via the user's own key, filtered by this uploader).
-  ipcMain.handle("uploader:setById", async (_e, id, name) => {
-    config.uploaderId = String(id);
-    config.uploaderName = name || String(id);
-    config.uploaderKey = null;
-    config.isPrimaryUploader = false;
-    apiKey = config.loginKey;
-    // best-effort: resolve a display name if none was given
-    if (!name && config.loginKey) {
-      try {
-        const r = await enqueue(async () => {
-          const res = await fetch(API_BASE + "/replays" + buildQuery({ uploader: String(id), count: 1 }), { headers: { Authorization: config.loginKey } });
-          const t = await res.text(); try { return t ? JSON.parse(t) : null; } catch { return null; }
-        });
-        const u = r && r.list && r.list[0] && r.list[0].uploader;
-        if (u && u.name) config.uploaderName = u.name;
-      } catch {}
-    }
-    saveConfig();
-    return { ok: true, uploaderName: config.uploaderName };
-  });
-
-  // Set primary uploader by their API key (grants access to private replays + groups).
+  // Sets the separate UPLOADING account's key. Validated via ping (to capture its
+  // SteamID for filtering). The managing key remains the active data key.
   ipcMain.handle("uploader:setKey", async (_e, key) => {
     const k = (key || "").trim();
     const prev = apiKey;
-    apiKey = k;
+    apiKey = k; // temporarily, only to ping the uploading account
     try {
       const ping = await apiJson("GET", "/");
-      setTier(ping && ping.type);
       config.uploaderKey = k;
       config.uploaderId = ping && ping.steam_id;
       config.uploaderName = ping && ping.name;
-      config.isPrimaryUploader = false;
+      config.separateAccounts = true;
+      apiKey = config.loginKey; // restore managing key as the data key
       saveConfig();
       return { ok: true, uploaderName: ping && ping.name };
     } catch (err) {
@@ -370,7 +333,7 @@ function registerIpc() {
     config.uploaderKey = null;
     config.uploaderId = null;
     config.uploaderName = null;
-    config.isPrimaryUploader = true;
+    config.separateAccounts = false;
     apiKey = config.loginKey;
     saveConfig();
     return { ok: true };
@@ -385,7 +348,7 @@ function registerIpc() {
     return { ok: true, folder: config.demosFolder };
   });
 
-  ipcMain.handle("identity:get", () => ({ identity, isPrimaryUploader: config.isPrimaryUploader }));
+  ipcMain.handle("identity:get", () => ({ identity, separateAccounts: config.separateAccounts }));
 
   ipcMain.handle("key:clear", () => { clearConfig(); return { ok: true }; });
 
@@ -525,6 +488,19 @@ function registerIpc() {
   });
 
   // ----- Upload -----
+  // Pick .replay files via a dialog that opens in the Demos folder by default.
+  ipcMain.handle("upload:pick", async () => {
+    const defaultPath = config.demosFolder || autoDemosFolder() || undefined;
+    const pick = await dialog.showOpenDialog({
+      title: "Select replay files to upload",
+      defaultPath,
+      properties: ["openFile", "multiSelections"],
+      filters: [{ name: "Rocket League replays", extensions: ["replay"] }]
+    });
+    if (pick.canceled) return { ok: false, canceled: true };
+    return { ok: true, files: pick.filePaths };
+  });
+
   ipcMain.handle("upload:replay", async (_e, filePath, opts) => {
     try {
       const buf = fs.readFileSync(filePath);
@@ -534,7 +510,7 @@ function registerIpc() {
       const data = await enqueue(async () => {
         const res = await fetch(API_BASE + "/v2/upload" + q, {
           method: "POST",
-          headers: authHeaders(),
+          headers: { Authorization: uploadKey() },
           body: form
         });
         if (res.status === 429) { const er = new Error("rate limited"); er.status = 429; throw er; }

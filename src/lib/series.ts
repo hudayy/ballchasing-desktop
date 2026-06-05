@@ -52,6 +52,14 @@ export function isSeriesEligible(playlist: string | null): boolean {
   return p.includes("private") || p.includes("tournament");
 }
 
+// The user's perspective of a single game: their score first, win/loss flag.
+export function userScore(sm: ReplaySummary, user: UserOpts): { present: boolean; mine: number; theirs: number; won: boolean } {
+  const side = sideHasUser(sm.blue, user) ? sm.blue : sideHasUser(sm.orange, user) ? sm.orange : null;
+  if (!side) return { present: false, mine: sm.blue.goals, theirs: sm.orange.goals, won: false };
+  const other = side === sm.blue ? sm.orange : sm.blue;
+  return { present: true, mine: side.goals, theirs: other.goals, won: side.goals > other.goals };
+}
+
 // Best-effort display name for a single team side (used by the replay row).
 export function teamNameFallback(side: TeamSide): string {
   if (side.name && side.name.trim()) return side.name.trim();

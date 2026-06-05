@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toSummary } from "../lib/normalize";
 import {
-  detectSeries, suggestNames, seriesScoreLine, Series, ReplaySummary, teamNameFallback,
+  detectSeries, suggestNames, seriesScoreLine, Series, ReplaySummary, teamNameFallback, userScore,
   detectSessions, suggestSessionNames, sessionTitle, GroupRef
 } from "../lib/series";
 import SeriesModal from "./SeriesModal";
@@ -168,15 +168,18 @@ export default function ReplayList({
     const sm = toSummary(r);
     const blueName = sm.blue.name || teamNameFallback(sm.blue);
     const orangeName = sm.orange.name || teamNameFallback(sm.orange);
-    const blueWon = sm.blue.goals > sm.orange.goals;
+    const us = userScore(sm, { myId: me?.id, myName: me?.name });
+    const left = us.present ? us.mine : sm.blue.goals;
+    const right = us.present ? us.theirs : sm.orange.goals;
+    const cellClass = "score-cell" + (us.present ? (us.won ? " win" : " loss") : "");
     return (
       <div className="replay-row" key={r.id} onClick={() => onOpenReplay(r.id)}>
         <input type="checkbox" className="chk" checked={selected.has(r.id)} readOnly
           onClick={(e) => { e.stopPropagation(); onCheck(r.id, (e as any).shiftKey); }} />
-        <div className="score-cell" title={`${sm.blue.goals}–${sm.orange.goals}`}>
-          <span className="score" style={{ color: blueWon ? "#7ec0ff" : "#5aa9ff", opacity: blueWon ? 1 : 0.6 }}>{sm.blue.goals}</span>
+        <div className={cellClass} title={us.present ? `you ${left}–${right}` : `${left}–${right}`}>
+          <span className="score" style={{ color: us.present ? "#eaf1fb" : "#5aa9ff" }}>{left}</span>
           <span className="dash">–</span>
-          <span className="score" style={{ color: !blueWon ? "#ffae85" : "#ff8a5a", opacity: !blueWon ? 1 : 0.6 }}>{sm.orange.goals}</span>
+          <span className="score" style={{ color: us.present ? "#9fb0c6" : "#ff8a5a" }}>{right}</span>
         </div>
         <div className="replay-info">
           <div>{r.replay_title || `${blueName} vs ${orangeName}`}</div>

@@ -1,5 +1,5 @@
 // Preload: exposes a minimal, typed-ish bridge to the renderer as window.api.
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 const invoke = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
 
@@ -7,8 +7,6 @@ contextBridge.exposeInMainWorld("api", {
   // Key / auth
   keyStatus: () => invoke("key:status"),
   setKey: (key) => invoke("key:set", key),
-  recentUploaders: () => invoke("uploader:recent"),
-  setUploaderById: (id, name) => invoke("uploader:setById", id, name),
   setUploaderKey: (key) => invoke("uploader:setKey", key),
   clearUploader: () => invoke("uploader:clear"),
   getIdentity: () => invoke("identity:get"),
@@ -34,7 +32,9 @@ contextBridge.exposeInMainWorld("api", {
 
   // Misc
   getMaps: () => invoke("maps:get"),
+  pickUploadFiles: () => invoke("upload:pick"),
   uploadReplay: (filePath, opts) => invoke("upload:replay", filePath, opts),
+  pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return file && file.path || ""; } },
   openExternal: (url) => invoke("open-external", url),
 
   // Updates

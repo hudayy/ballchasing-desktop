@@ -5,8 +5,6 @@ declare global {
   interface BcApi {
     keyStatus(): Promise<KeyStatus>;
     setKey(key: string): Promise<{ ok: boolean; ping?: any; tier?: string; rps?: number; error?: string; status?: number; identity?: Identity }>;
-    recentUploaders(): Promise<{ ok: boolean; uploaders?: { id: string; name: string }[]; error?: string }>;
-    setUploaderById(id: string, name?: string): Promise<{ ok: boolean; uploaderName?: string }>;
     setUploaderKey(key: string): Promise<{ ok: boolean; uploaderName?: string; error?: string; status?: number }>;
     clearUploader(): Promise<{ ok: boolean }>;
     getIdentity(): Promise<{ identity: Identity | null; isPrimaryUploader: boolean }>;
@@ -29,7 +27,9 @@ declare global {
     deleteGroup(id: string): Promise<ApiResult<any>>;
 
     getMaps(): Promise<ApiResult<any>>;
-    uploadReplay(filePath: string, opts?: any): Promise<ApiResult<any> & { duplicate?: boolean }>;
+    pickUploadFiles(): Promise<{ ok: boolean; files?: string[]; canceled?: boolean }>;
+    uploadReplay(filePath: string, opts?: { visibility?: string; group?: string }): Promise<ApiResult<any> & { duplicate?: boolean }>;
+    pathForFile(file: File): string;
     openExternal(url: string): Promise<void>;
 
     appVersion(): Promise<string>;
@@ -44,7 +44,7 @@ declare global {
   type KeyStatus = {
     hasKey: boolean;
     identity?: Identity | null;
-    isPrimaryUploader?: boolean;
+    separateAccounts?: boolean;
     hasUploaderKey?: boolean;
     uploaderId?: string | null;
     uploaderName?: string | null;

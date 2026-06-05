@@ -15,21 +15,21 @@ const RANKS = [
 
 export default function ReplayBrowser({
   me,
-  isPrimaryUploader = true,
+  separateAccounts = false,
   uploaderFilter = "me",
   onOpenReplay,
   onGroupCreated,
   onOpenGroup
 }: {
   me?: { id?: string | null; name?: string | null };
-  isPrimaryUploader?: boolean;
+  separateAccounts?: boolean;
   uploaderFilter?: string;
   onOpenReplay: (id: string) => void;
   onGroupCreated?: () => void;
   onOpenGroup?: (g: { id: string; name: string }) => void;
 }) {
-  // When the user isn't their own uploader, default to "only games I'm in".
-  const [onlyMine, setOnlyMine] = useState(!isPrimaryUploader);
+  // "Only games I'm in" is on by default.
+  const [onlyMine, setOnlyMine] = useState(true);
   const baseFilters = () => {
     const f: any = { uploader: uploaderFilter, count: 200, "sort-by": "replay-date", "sort-dir": "desc" };
     if (onlyMine && me?.name) f["player-name"] = me.name;
@@ -72,8 +72,8 @@ export default function ReplayBrowser({
         </label>
         <label>Uploader
           <select value={f.uploader ?? "me"} onChange={(e) => set("uploader", e.target.value)}>
-            <option value="me">{isPrimaryUploader ? "me" : "my uploader"}</option>
-            {!isPrimaryUploader && uploaderFilter !== "me" ? <option value={uploaderFilter}>my uploader</option> : null}
+            <option value="me">{separateAccounts ? "me (managing)" : "me"}</option>
+            {separateAccounts && uploaderFilter !== "me" ? <option value={uploaderFilter}>my uploader</option> : null}
             <option value="">anyone</option>
           </select>
         </label>
@@ -86,13 +86,11 @@ export default function ReplayBrowser({
             <option value="replay-date">replay date</option><option value="upload-date">upload date</option>
           </select>
         </label>
-        <label style={{ flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-end" }}>
+        <label className="filter-check">
           <input type="checkbox" className="chk" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />
           Only games I'm in
         </label>
-        <div style={{ alignSelf: "flex-end" }}>
-          <button className="primary" onClick={apply}>Apply filters</button>
-        </div>
+        <button className="primary" onClick={apply}>Apply filters</button>
       </div>
       <ReplayList params={applied} me={me} onOpenReplay={onOpenReplay} onGroupCreated={onGroupCreated} onOpenGroup={onOpenGroup} />
     </div>
