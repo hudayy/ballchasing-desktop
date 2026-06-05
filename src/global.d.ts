@@ -3,12 +3,16 @@ export {};
 
 declare global {
   interface BcApi {
-    keyStatus(): Promise<{ hasKey: boolean; identity?: Identity | null; isPrimaryUploader?: boolean; hasUploaderKey?: boolean }>;
+    keyStatus(): Promise<KeyStatus>;
     setKey(key: string): Promise<{ ok: boolean; ping?: any; tier?: string; rps?: number; error?: string; status?: number; identity?: Identity }>;
+    recentUploaders(): Promise<{ ok: boolean; uploaders?: { id: string; name: string }[]; error?: string }>;
+    setUploaderById(id: string, name?: string): Promise<{ ok: boolean; uploaderName?: string }>;
     setUploaderKey(key: string): Promise<{ ok: boolean; uploaderName?: string; error?: string; status?: number }>;
-    clearUploaderKey(): Promise<{ ok: boolean }>;
+    clearUploader(): Promise<{ ok: boolean }>;
     getIdentity(): Promise<{ identity: Identity | null; isPrimaryUploader: boolean }>;
     clearKey(): Promise<{ ok: boolean }>;
+    getDemosFolder(): Promise<{ folder: string | null; detected: string | null }>;
+    setDemosFolder(): Promise<{ ok: boolean; folder?: string; canceled?: boolean }>;
     ping(): Promise<{ ok: boolean; ping?: any; error?: string }>;
     status(): Promise<{ tier: string; rps: number; queued: number; inFlight: number }>;
 
@@ -16,7 +20,7 @@ declare global {
     getReplay(id: string, opts?: any): Promise<ApiResult<any>>;
     patchReplay(id: string, body: any): Promise<ApiResult<any>>;
     deleteReplay(id: string): Promise<ApiResult<any>>;
-    downloadReplays(ids: string[]): Promise<{ ok: boolean; dir?: string; done?: number; failed?: number; canceled?: boolean; error?: string }>;
+    downloadReplays(ids: string[], opts?: { mode?: "demos" | "choose" }): Promise<{ ok: boolean; dir?: string; done?: number; failed?: number; canceled?: boolean; error?: string }>;
 
     listGroups(params?: any, opts?: any): Promise<ApiResult<any>>;
     getGroup(id: string, opts?: any): Promise<ApiResult<any>>;
@@ -37,6 +41,15 @@ declare global {
 
   type ApiResult<T> = { ok: boolean; data?: T; error?: string; status?: number; cached?: boolean; stale?: boolean };
   type Identity = { steam_id?: string | null; name?: string | null };
+  type KeyStatus = {
+    hasKey: boolean;
+    identity?: Identity | null;
+    isPrimaryUploader?: boolean;
+    hasUploaderKey?: boolean;
+    uploaderId?: string | null;
+    uploaderName?: string | null;
+    uploaderFilter?: string;
+  };
 
   interface Window {
     api: BcApi;

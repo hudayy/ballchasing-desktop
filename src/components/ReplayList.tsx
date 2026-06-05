@@ -35,6 +35,7 @@ export default function ReplayList({
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<{ suggestions: string[]; ids: string[] } | null>(null);
+  const [dlMenu, setDlMenu] = useState(false);
   const anchorRef = useRef<string | null>(null);
 
   const load = useCallback(async (force = false) => {
@@ -132,9 +133,10 @@ export default function ReplayList({
   };
 
   // ---- bulk actions ----
-  const doDownload = async () => {
+  const doDownload = async (mode: "choose" | "demos") => {
+    setDlMenu(false);
     setBusy(true);
-    const res = await window.api.downloadReplays(Array.from(selected));
+    const res = await window.api.downloadReplays(Array.from(selected), { mode });
     setBusy(false);
     if (res.ok) alert(`Downloaded ${res.done} replay(s)${res.failed ? `, ${res.failed} failed` : ""} to:\n${res.dir}`);
     else if (!res.canceled) alert("Download failed: " + (res.error || "unknown"));
@@ -171,16 +173,18 @@ export default function ReplayList({
       <div className="replay-row" key={r.id} onClick={() => onOpenReplay(r.id)}>
         <input type="checkbox" className="chk" checked={selected.has(r.id)} readOnly
           onClick={(e) => { e.stopPropagation(); onCheck(r.id, (e as any).shiftKey); }} />
-        <div>
+        <div className="score-cell" title={`${sm.blue.goals}–${sm.orange.goals}`}>
+          <span className="score" style={{ color: blueWon ? "#7ec0ff" : "#5aa9ff", opacity: blueWon ? 1 : 0.6 }}>{sm.blue.goals}</span>
+          <span className="dash">–</span>
+          <span className="score" style={{ color: !blueWon ? "#ffae85" : "#ff8a5a", opacity: !blueWon ? 1 : 0.6 }}>{sm.orange.goals}</span>
+        </div>
+        <div className="replay-info">
           <div>{r.replay_title || `${blueName} vs ${orangeName}`}</div>
           <div className="muted" style={{ fontSize: 11 }}>
             {r.map_name || r.map_code} · {r.playlist_name || r.playlist_id} · {r.date ? new Date(r.date).toLocaleString() : ""}
             {r.visibility && r.visibility !== "public" ? ` · ${r.visibility}` : ""}
           </div>
         </div>
-        <div className="score" style={{ color: blueWon ? "#7ec0ff" : "#5aa9ff", opacity: blueWon ? 1 : 0.6 }}>{sm.blue.goals}</div>
-        <div className="muted">–</div>
-        <div className="score" style={{ color: !blueWon ? "#ffae85" : "#ff8a5a", opacity: !blueWon ? 1 : 0.6 }}>{sm.orange.goals}</div>
       </div>
     );
   };
@@ -236,7 +240,19 @@ export default function ReplayList({
           <>
             <span className="muted">{selected.size} selected</span>
             <button className="primary" onClick={createFromSelection} disabled={busy}>＋ Add to group…</button>
-            <button title="Download .replay files" onClick={doDownload} disabled={busy}>⬇</button>
+            <span className="dl-wrap">
+              <button title="Download .replay files" onClick={() => setDlMenu((v) => !v)} disabled={busy} aria-label="Download">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px" }}>
+                  <path d="M12 3v11" /><path d="M7 9.5l5 5 5-5" /><path d="M5 21h14" />
+                </svg>
+              </button>
+              {dlMenu && (
+                <div className="dl-menu" onMouseLeave={() => setDlMenu(false)}>
+                  <button onClick={() => doDownload("choose")}>Choose location…</button>
+                  <button onClick={() => doDownload("demos")}>Add to Demos folder</button>
+                </div>
+              )}
+            </span>
             <select className="visibility" defaultValue="" title="Set visibility" disabled={busy}
               onChange={(e) => { doVisibility(e.target.value); e.target.value = ""; }}>
               <option value="" disabled>👁 Visibility…</option>

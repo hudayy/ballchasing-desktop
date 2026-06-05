@@ -16,12 +16,14 @@ const RANKS = [
 export default function ReplayBrowser({
   me,
   isPrimaryUploader = true,
+  uploaderFilter = "me",
   onOpenReplay,
   onGroupCreated,
   onOpenGroup
 }: {
   me?: { id?: string | null; name?: string | null };
   isPrimaryUploader?: boolean;
+  uploaderFilter?: string;
   onOpenReplay: (id: string) => void;
   onGroupCreated?: () => void;
   onOpenGroup?: (g: { id: string; name: string }) => void;
@@ -29,7 +31,7 @@ export default function ReplayBrowser({
   // When the user isn't their own uploader, default to "only games I'm in".
   const [onlyMine, setOnlyMine] = useState(!isPrimaryUploader);
   const baseFilters = () => {
-    const f: any = { uploader: "me", count: 200, "sort-by": "replay-date", "sort-dir": "desc" };
+    const f: any = { uploader: uploaderFilter, count: 200, "sort-by": "replay-date", "sort-dir": "desc" };
     if (onlyMine && me?.name) f["player-name"] = me.name;
     return f;
   };
@@ -69,8 +71,10 @@ export default function ReplayBrowser({
           </select>
         </label>
         <label>Uploader
-          <select value={f.uploader || "me"} onChange={(e) => set("uploader", e.target.value)}>
-            <option value="me">me</option><option value="">anyone</option>
+          <select value={f.uploader ?? "me"} onChange={(e) => set("uploader", e.target.value)}>
+            <option value="me">{isPrimaryUploader ? "me" : "my uploader"}</option>
+            {!isPrimaryUploader && uploaderFilter !== "me" ? <option value={uploaderFilter}>my uploader</option> : null}
+            <option value="">anyone</option>
           </select>
         </label>
         <label>Played after<input type="date" value={f["replay-date-after"]?.slice(0, 10) || ""}

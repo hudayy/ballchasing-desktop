@@ -7,10 +7,14 @@ contextBridge.exposeInMainWorld("api", {
   // Key / auth
   keyStatus: () => invoke("key:status"),
   setKey: (key) => invoke("key:set", key),
-  setUploaderKey: (key) => invoke("uploader:set", key),
-  clearUploaderKey: () => invoke("uploader:clear"),
+  recentUploaders: () => invoke("uploader:recent"),
+  setUploaderById: (id, name) => invoke("uploader:setById", id, name),
+  setUploaderKey: (key) => invoke("uploader:setKey", key),
+  clearUploader: () => invoke("uploader:clear"),
   getIdentity: () => invoke("identity:get"),
   clearKey: () => invoke("key:clear"),
+  getDemosFolder: () => invoke("demos:get"),
+  setDemosFolder: () => invoke("demos:set"),
   ping: () => invoke("ping"),
   status: () => invoke("status:get"),
 
@@ -19,7 +23,7 @@ contextBridge.exposeInMainWorld("api", {
   getReplay: (id, opts) => invoke("replays:get", id, opts),
   patchReplay: (id, body) => invoke("replays:patch", id, body),
   deleteReplay: (id) => invoke("replays:delete", id),
-  downloadReplays: (ids) => invoke("replays:download", ids),
+  downloadReplays: (ids, opts) => invoke("replays:download", ids, opts),
 
   // Groups
   listGroups: (params, opts) => invoke("groups:list", params, opts),

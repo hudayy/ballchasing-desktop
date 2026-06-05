@@ -7,26 +7,31 @@ import ReplayBrowser from "./components/ReplayBrowser";
 import ReplayDetail from "./components/ReplayDetail";
 import Spinner from "./components/Spinner";
 import UpdateBadge from "./components/UpdateBadge";
+import Settings from "./components/Settings";
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [me, setMe] = useState<{ id?: string | null; name?: string | null }>({});
   const [isPrimaryUploader, setIsPrimaryUploader] = useState(true);
+  const [uploaderFilter, setUploaderFilter] = useState("me");
   const [selectedGroup, setSelectedGroup] = useState<{ id: string; name: string } | null>(null);
   const [browse, setBrowse] = useState(true); // global replay browser
+  const [browseKey, setBrowseKey] = useState(0); // remount browser when uploader changes
   const [openReplay, setOpenReplay] = useState<string | null>(null);
   const [treeRefresh, setTreeRefresh] = useState(0);
   const [sidebarW, setSidebarW] = useState(330);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const applyStatus = (st: KeyStatus) => {
+    setMe({ id: st.identity?.steam_id, name: st.identity?.name });
+    setIsPrimaryUploader(st.isPrimaryUploader ?? true);
+    setUploaderFilter(st.uploaderFilter || "me");
+  };
 
   useEffect(() => {
     (async () => {
       const st = await window.api.keyStatus();
-      if (st.hasKey) {
-        setMe({ id: st.identity?.steam_id, name: st.identity?.name });
-        setIsPrimaryUploader(st.isPrimaryUploader ?? true);
-        setAuthed(true);
-        return;
-      }
+      if (st.hasKey) { applyStatus(st); setAuthed(true); return; }
       setAuthed(false);
     })();
   }, []);
@@ -47,10 +52,9 @@ export default function App() {
   const openBrowse = () => { setSelectedGroup(null); setBrowse(true); setOpenReplay(null); };
 
   if (authed === null) return <div className="center"><Spinner label="Starting…" /></div>;
-  if (!authed) return <KeyGate onAuthed={async (identity) => {
+  if (!authed) return <KeyGate onAuthed={async () => {
     const st = await window.api.keyStatus();
-    setMe({ id: identity?.steam_id, name: identity?.name });
-    setIsPrimaryUploader(st.isPrimaryUploader ?? true);
+    applyStatus(st);
     setAuthed(true);
   }} />;
 
@@ -63,6 +67,7 @@ export default function App() {
         <RateMeter />
         <UpdateBadge />
         <span className="identity">{me.name ? <>signed in as <b>{me.name}</b></> : "signed in"}{!isPrimaryUploader ? <span className="muted"> · viewing uploader's data</span> : null}</span>
+        <button title="Settings" onClick={() => setSettingsOpen(true)}>⚙</button>
         <button onClick={async () => { await window.api.clearKey(); setAuthed(false); }}>Sign out</button>
       </div>
 
@@ -91,7 +96,7 @@ export default function App() {
               <GroupDetail groupId={selectedGroup.id} me={me} onOpenReplay={setOpenReplay} onGroupCreated={refreshTree} onOpenGroup={openGroup} />
             </div>
           ) : browse ? (
-            <ReplayBrowser me={me} isPrimaryUploader={isPrimaryUploader} onOpenReplay={setOpenReplay} onGroupCreated={refreshTree} onOpenGroup={openGroup} />
+            <ReplayBrowser key={browseKey} me={me} isPrimaryUploader={isPrimaryUploader} uploaderFilter={uploaderFilter} onOpenReplay={setOpenReplay} onGroupCreated={refreshTree} onOpenGroup={openGroup} />
           ) : (
             <div className="content"><div className="empty-state">
               <div>Select a group from the tree, or click <b>Browse all replays</b>.</div>
@@ -100,6 +105,13 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {settingsOpen && (
+        <Settings
+          onClose={() => setSettingsOpen(false)}
+          onChanged={async () => { const st = await window.api.keyStatus(); applyStatus(st); setBrowseKey((n) => n + 1); refreshTree(); }}
+        />
+      )}
     </div>
   );
 }

@@ -41,7 +41,9 @@ function setupAutoUpdate(win) {
       message: `Ballchasing Desktop ${info && info.version} has been downloaded.`,
       detail: "Restart to apply the update. The app will replace itself automatically."
     });
-    if (res.response === 0) { setImmediate(() => autoUpdater.quitAndInstall()); }
+    // isSilent=true -> no installer wizard; reuses the existing install location.
+    // isForceRunAfter=true -> relaunch the app after updating.
+    if (res.response === 0) { setImmediate(() => autoUpdater.quitAndInstall(true, true)); }
   });
 
   // initial check + re-check every 6 hours while running
@@ -71,7 +73,15 @@ function initPaths() {
 // ---------------------------------------------------------------------------
 let apiKey = null;          // active data key
 let identity = null;        // { steam_id, name }
-let config = { loginKey: null, uploaderKey: null, identity: null, isPrimaryUploader: true };
+let config = {
+  loginKey: null,
+  uploaderKey: null,        // primary uploader's API key (optional)
+  uploaderId: null,         // primary uploader's SteamID64 (for filtering w/o a key)
+  uploaderName: null,
+  identity: null,
+  isPrimaryUploader: true,
+  demosFolder: null         // saved Rocket League Demos folder
+};
 
 function loadConfig() {
   try {
@@ -94,8 +104,25 @@ function saveConfig() {
 
 function clearConfig() {
   apiKey = null; identity = null;
-  config = { loginKey: null, uploaderKey: null, identity: null, isPrimaryUploader: true };
-  try { if (fs.existsSync(CONFIG_FILE)) fs.unlinkSync(CONFIG_FILE); } catch {}
+  const demos = config.demosFolder; // keep the demos folder across sign-out
+  config = { loginKey: null, uploaderKey: null, uploaderId: null, uploaderName: null, identity: null, isPrimaryUploader: true, demosFolder: demos };
+  saveConfig();
+}
+
+// The Steam ID used for the "uploader" replay filter, given the current mode.
+function uploaderFilter() {
+  if (config.isPrimaryUploader) return "me";
+  if (config.uploaderKey) return "me";          // data key IS the uploader's
+  if (config.uploaderId) return String(config.uploaderId);
+  return "me";
+}
+
+// Auto-detect the Rocket League Demos folder on Windows.
+function autoDemosFolder() {
+  try {
+    const p = path.join(app.getPath("documents"), "My Games", "Rocket League", "TAGame", "Demos");
+    return fs.existsSync(p) ? p : null;
+  } catch { return null; }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +270,10 @@ function registerIpc() {
     hasKey: !!apiKey,
     identity,
     isPrimaryUploader: config.isPrimaryUploader,
-    hasUploaderKey: !!config.uploaderKey
+    hasUploaderKey: !!config.uploaderKey,
+    uploaderId: config.uploaderId,
+    uploaderName: config.uploaderName,
+    uploaderFilter: uploaderFilter()
   }));
 
   // Sets the user's OWN login key. Establishes identity. Defaults to being the
@@ -268,9 +298,55 @@ function registerIpc() {
     }
   });
 
-  // Sets the primary UPLOADER's key (when the user isn't their own uploader).
-  // Identity stays the logged-in user; data calls now use the uploader's key.
-  ipcMain.handle("uploader:set", async (_e, key) => {
+  // The user's 3 most-recent unique uploaders, from replays the user appears in.
+  // Always queried with the user's OWN key, regardless of the active data key.
+  ipcMain.handle("uploader:recent", async () => {
+    const key = config.loginKey;
+    if (!key || !identity) return { ok: false };
+    const fetchList = (params) => enqueue(async () => {
+      const res = await fetch(API_BASE + "/replays" + buildQuery(params), { headers: { Authorization: key } });
+      if (res.status === 429) { const e = new Error("rate"); e.status = 429; throw e; }
+      const t = await res.text(); try { return t ? JSON.parse(t) : null; } catch { return null; }
+    });
+    try {
+      let data = null;
+      if (identity.steam_id) data = await fetchList({ "player-id": "steam:" + identity.steam_id, count: 100, "sort-by": "upload-date", "sort-dir": "desc" });
+      if ((!data || !data.list || !data.list.length) && identity.name) data = await fetchList({ "player-name": identity.name, count: 100, "sort-by": "upload-date", "sort-dir": "desc" });
+      const seen = new Map();
+      for (const r of (data && data.list) || []) {
+        const u = r.uploader;
+        if (u && u.steam_id && !seen.has(u.steam_id)) seen.set(u.steam_id, { id: String(u.steam_id), name: u.name || String(u.steam_id) });
+        if (seen.size >= 3) break;
+      }
+      return { ok: true, uploaders: Array.from(seen.values()) };
+    } catch (err) { return { ok: false, error: err.message }; }
+  });
+
+  // Set primary uploader by SteamID64 (no key needed — public/unlisted replays
+  // are read via the user's own key, filtered by this uploader).
+  ipcMain.handle("uploader:setById", async (_e, id, name) => {
+    config.uploaderId = String(id);
+    config.uploaderName = name || String(id);
+    config.uploaderKey = null;
+    config.isPrimaryUploader = false;
+    apiKey = config.loginKey;
+    // best-effort: resolve a display name if none was given
+    if (!name && config.loginKey) {
+      try {
+        const r = await enqueue(async () => {
+          const res = await fetch(API_BASE + "/replays" + buildQuery({ uploader: String(id), count: 1 }), { headers: { Authorization: config.loginKey } });
+          const t = await res.text(); try { return t ? JSON.parse(t) : null; } catch { return null; }
+        });
+        const u = r && r.list && r.list[0] && r.list[0].uploader;
+        if (u && u.name) config.uploaderName = u.name;
+      } catch {}
+    }
+    saveConfig();
+    return { ok: true, uploaderName: config.uploaderName };
+  });
+
+  // Set primary uploader by their API key (grants access to private replays + groups).
+  ipcMain.handle("uploader:setKey", async (_e, key) => {
     const k = (key || "").trim();
     const prev = apiKey;
     apiKey = k;
@@ -278,6 +354,8 @@ function registerIpc() {
       const ping = await apiJson("GET", "/");
       setTier(ping && ping.type);
       config.uploaderKey = k;
+      config.uploaderId = ping && ping.steam_id;
+      config.uploaderName = ping && ping.name;
       config.isPrimaryUploader = false;
       saveConfig();
       return { ok: true, uploaderName: ping && ping.name };
@@ -290,10 +368,21 @@ function registerIpc() {
   // Marks the user as their own uploader (clears any uploader key).
   ipcMain.handle("uploader:clear", () => {
     config.uploaderKey = null;
+    config.uploaderId = null;
+    config.uploaderName = null;
     config.isPrimaryUploader = true;
     apiKey = config.loginKey;
     saveConfig();
     return { ok: true };
+  });
+
+  // ----- Rocket League Demos folder -----
+  ipcMain.handle("demos:get", () => ({ folder: config.demosFolder || null, detected: autoDemosFolder() }));
+  ipcMain.handle("demos:set", async () => {
+    const pick = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"], title: "Select your Rocket League Demos folder" });
+    if (pick.canceled || !pick.filePaths[0]) return { ok: false, canceled: true };
+    config.demosFolder = pick.filePaths[0]; saveConfig();
+    return { ok: true, folder: config.demosFolder };
   });
 
   ipcMain.handle("identity:get", () => ({ identity, isPrimaryUploader: config.isPrimaryUploader }));
@@ -472,12 +561,24 @@ function registerIpc() {
 
   ipcMain.handle("app:version", () => app.getVersion());
 
-  // Download one or more replay .replay files into a chosen folder.
-  ipcMain.handle("replays:download", async (_e, ids) => {
+  // Download one or more replay .replay files.
+  //   opts.mode === "demos"  -> the Rocket League Demos folder (auto/saved, else ask once)
+  //   otherwise              -> ask for a folder each time
+  ipcMain.handle("replays:download", async (_e, ids, opts) => {
     if (!ids || !ids.length) return { ok: false, error: "nothing selected" };
-    const pick = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"], title: "Choose download folder" });
-    if (pick.canceled || !pick.filePaths[0]) return { ok: false, canceled: true };
-    const dir = pick.filePaths[0];
+    let dir;
+    if (opts && opts.mode === "demos") {
+      dir = config.demosFolder || autoDemosFolder();
+      if (!dir) {
+        const pick = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"], title: "Find your Rocket League Demos folder" });
+        if (pick.canceled || !pick.filePaths[0]) return { ok: false, canceled: true };
+        dir = pick.filePaths[0]; config.demosFolder = dir; saveConfig();
+      }
+    } else {
+      const pick = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"], title: "Choose download folder" });
+      if (pick.canceled || !pick.filePaths[0]) return { ok: false, canceled: true };
+      dir = pick.filePaths[0];
+    }
     let done = 0, failed = 0;
     for (const id of ids) {
       try {

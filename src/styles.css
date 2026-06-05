@@ -140,20 +140,26 @@ table.stat tr:hover td { filter: brightness(1.15); }
 .gate input { flex: 1; }
 .gate .err { color: #ff9a9d; margin-top: 10px; }
 
-/* Replay rows */
-.replay-row { display: grid; grid-template-columns: 28px 1fr auto auto auto; gap: 8px; align-items: center;
+/* Replay rows: checkbox · score · info  (score sits right next to the title) */
+.replay-row { display: grid; grid-template-columns: 22px auto 1fr; gap: 10px; align-items: center;
   padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
 .replay-row:hover { background: var(--bg-2); }
+.score-cell { display: inline-flex; align-items: center; gap: 5px; min-width: 52px; justify-content: center;
+  padding: 2px 8px; background: var(--bg-3); border-radius: 7px; font-size: 14px; }
+.score-cell .dash { color: var(--text-dim); }
+.replay-info { min-width: 0; overflow: hidden; }
+.replay-info > div:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .score { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 16px; text-align: center; }
 
 /* Series box: thin, light-blue, rounded outline; games contained inside, banner on top */
 .series-box { border: 1px solid rgba(90, 160, 255, 0.55); border-radius: 10px; margin: 10px 2px; overflow: hidden; background: rgba(90, 160, 255, 0.04); }
 .series-box.existing { border-color: rgba(63, 174, 143, 0.6); background: rgba(63, 174, 143, 0.05); }
-.series-box.session { border-color: rgba(176, 122, 255, 0.6); background: rgba(176, 122, 255, 0.05); }
+/* Sessions: amber — chosen to stay distinct from series-blue under deuteranopia */
+.series-box.session { border-color: rgba(240, 160, 50, 0.65); background: rgba(240, 160, 50, 0.06); }
 .series-head { display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: rgba(90, 160, 255, 0.10);
   border-bottom: 1px solid rgba(90, 160, 255, 0.35); flex-wrap: wrap; }
 .series-box.existing .series-head { background: rgba(63, 174, 143, 0.10); border-bottom-color: rgba(63, 174, 143, 0.35); }
-.series-box.session .series-head { background: rgba(176, 122, 255, 0.12); border-bottom-color: rgba(176, 122, 255, 0.38); }
+.series-box.session .series-head { background: rgba(240, 160, 50, 0.13); border-bottom-color: rgba(240, 160, 50, 0.4); }
 .series-head .series-score { font-weight: 600; }
 .series-games .replay-row:last-child { border-bottom: none; }
 .replay-row.in-series { border-left: none; }
@@ -214,6 +220,23 @@ input[type="checkbox"].chk:checked::after {
 .toggle button { border: none; border-radius: 0; background: var(--bg-3); padding: 3px 12px; }
 .toggle button.on { background: var(--accent-2); color: #fff; }
 .visibility { max-width: 140px; }
+
+/* download split-button menu */
+.dl-wrap { position: relative; display: inline-block; }
+.dl-menu { position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 20;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 4px;
+  display: flex; flex-direction: column; min-width: 180px; box-shadow: 0 6px 18px rgba(0,0,0,0.4); }
+.dl-menu button { text-align: left; border: none; background: transparent; padding: 7px 10px; border-radius: 6px; }
+.dl-menu button:hover { background: var(--bg-3); }
+
+/* settings + uploader picker */
+.settings-section { padding: 12px 0; border-top: 1px solid var(--border); }
+.settings-label { font-weight: 600; margin-bottom: 6px; }
+.uploader-picker .uploader-list { display: flex; flex-direction: column; gap: 6px; }
+.uploader-chip { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 10px; }
+.uploader-chip .who { font-weight: 600; }
+.small { font-size: 10px; }
+.radio { display: inline-flex; align-items: center; gap: 5px; color: var(--text); }
 
 /* ---- Group picker (in Add-to-group modal, item 3) ---- */
 .modal.wide { width: 560px; }

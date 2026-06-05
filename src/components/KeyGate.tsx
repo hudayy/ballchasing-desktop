@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import Spinner from "./Spinner";
+import UploaderPicker from "./UploaderPicker";
 
 export default function KeyGate({ onAuthed }: { onAuthed: (identity: any) => void }) {
   const [step, setStep] = useState<"key" | "role" | "uploader">("key");
   const [key, setKey] = useState("");
-  const [upKey, setUpKey] = useState("");
   const [identity, setIdentity] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -15,14 +15,6 @@ export default function KeyGate({ onAuthed }: { onAuthed: (identity: any) => voi
     setBusy(false);
     if (res.ok) { setIdentity(res.identity); setStep("role"); }
     else setErr(res.status === 401 ? "That API key was rejected (401)." : res.error || "Failed to validate key.");
-  };
-
-  const submitUploader = async () => {
-    setBusy(true); setErr(null);
-    const res = await window.api.setUploaderKey(upKey.trim());
-    setBusy(false);
-    if (res.ok) onAuthed(identity);
-    else setErr(res.status === 401 ? "That uploader key was rejected (401)." : res.error || "Failed to validate uploader key.");
   };
 
   return (
@@ -63,19 +55,8 @@ export default function KeyGate({ onAuthed }: { onAuthed: (identity: any) => voi
 
       {step === "uploader" && (
         <>
-          <p>
-            Enter the <b>API key of your primary uploader</b>. The app will pull replays/groups using
-            their key while keeping <b>{identity?.name || "your"}</b> identity for filtering to your
-            games and for series naming.
-          </p>
-          <div className="row">
-            <input type="password" placeholder="Primary uploader's API key…" value={upKey}
-              onChange={(e) => setUpKey(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && upKey.trim() && submitUploader()} />
-            <button className="primary" disabled={!upKey.trim() || busy} onClick={submitUploader}>
-              {busy ? <Spinner small /> : "Continue"}
-            </button>
-          </div>
+          <p>Who uploads <b>{identity?.name || "your"}</b>'s replays?</p>
+          <UploaderPicker onDone={() => onAuthed(identity)} />
           <p style={{ marginTop: 8 }}><a href="#" onClick={(e) => { e.preventDefault(); setStep("role"); }}>← back</a></p>
         </>
       )}
