@@ -1,8 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toSummary } from "../lib/normalize";
-import { detectSeries, suggestNames, seriesScoreLine, Series, ReplaySummary, teamNameFallback } from "../lib/series";
+import {
+  detectSeries, suggestNames, seriesScoreLine, Series, ReplaySummary, teamNameFallback,
+  detectSessions, suggestSessionNames, sessionTitle, GroupRef
+} from "../lib/series";
 import SeriesModal from "./SeriesModal";
 import Spinner from "./Spinner";
+
+interface Cluster {
+  key: string;
+  kind: "series" | "session";
+  replays: ReplaySummary[];
+  title: string;
+  suggestions: string[];
+  existingGroup: GroupRef | null;
+}
 
 export default function ReplayList({
   params,
@@ -44,15 +56,34 @@ export default function ReplayList({
   }, [load]);
 
   const summaries: ReplaySummary[] = useMemo(() => replays.map(toSummary), [replays]);
-  const series: Series[] = useMemo(
-    () => detectSeries(summaries, { myId: me?.id, myName: me?.name }),
-    [summaries, me?.id, me?.name]
-  );
+
+  // Unified clusters: private-match SERIES (blue / green-if-grouped) + matchmaking
+  // SESSIONS (purple / green-if-grouped). They never overlap (different playlists).
+  const clusters: Cluster[] = useMemo(() => {
+    const user = { myId: me?.id, myName: me?.name };
+    const out: Cluster[] = [];
+    for (const s of detectSeries(summaries, user)) {
+      out.push({
+        key: "s:" + s.id, kind: "series", replays: s.replays,
+        title: s.existingGroup ? s.existingGroup.name : seriesScoreLine(s),
+        suggestions: suggestNames(s), existingGroup: s.existingGroup
+      });
+    }
+    for (const s of detectSessions(summaries, user)) {
+      out.push({
+        key: "ss:" + s.id, kind: "session", replays: s.replays,
+        title: s.existingGroup ? s.existingGroup.name : sessionTitle(s),
+        suggestions: suggestSessionNames(s), existingGroup: s.existingGroup
+      });
+    }
+    return out;
+  }, [summaries, me?.id, me?.name]);
+
   const seriesOf = useMemo(() => {
-    const m: Record<string, Series> = {};
-    series.forEach((s) => s.replays.forEach((r) => (m[r.id] = s)));
+    const m: Record<string, Cluster> = {};
+    clusters.forEach((c) => c.replays.forEach((r) => (m[r.id] = c)));
     return m;
-  }, [series]);
+  }, [clusters]);
   const byId = useMemo(() => {
     const m: Record<string, any> = {}; replays.forEach((r) => (m[r.id] = r)); return m;
   }, [replays]);
@@ -92,12 +123,12 @@ export default function ReplayList({
     });
   };
 
-  const selectSeries = (s: Series) => { setSelected(new Set(s.replays.map((r) => r.id))); anchorRef.current = s.replays[0].id; };
-  const openCreateModal = (s: Series) => { selectSeries(s); setModal({ suggestions: suggestNames(s), ids: s.replays.map((r) => r.id) }); };
+  const selectCluster = (c: Cluster) => { setSelected(new Set(c.replays.map((r) => r.id))); anchorRef.current = c.replays[0].id; };
+  const openCreateModal = (c: Cluster) => { selectCluster(c); setModal({ suggestions: c.suggestions, ids: c.replays.map((r) => r.id) }); };
   const createFromSelection = () => {
     const ids = Array.from(selected); if (!ids.length) return;
-    const s = series.find((x) => x.replays.length === ids.length && x.replays.every((r) => selected.has(r.id)));
-    setModal({ suggestions: s ? suggestNames(s) : ["New group"], ids });
+    const c = clusters.find((x) => x.replays.length === ids.length && x.replays.every((r) => selected.has(r.id)));
+    setModal({ suggestions: c ? c.suggestions : ["New group"], ids });
   };
 
   // ---- bulk actions ----
@@ -156,24 +187,27 @@ export default function ReplayList({
 
   for (const r of ordered) {
     if (rendered.has(r.id)) continue;
-    const s = seriesOf[r.id];
-    if (s) {
-      s.replays.forEach((rr) => rendered.add(rr.id));
-      const games = [...s.replays].sort((a, b) => (Date.parse(b.date || "") || 0) - (Date.parse(a.date || "") || 0));
-      const existing = s.existingGroup;
+    const c = seriesOf[r.id];
+    if (c) {
+      c.replays.forEach((rr) => rendered.add(rr.id));
+      const games = [...c.replays].sort((a, b) => (Date.parse(b.date || "") || 0) - (Date.parse(a.date || "") || 0));
+      const existing = c.existingGroup;
+      const boxClass = "series-box" + (existing ? " existing" : c.kind === "session" ? " session" : "");
+      const label = c.kind === "session" ? "🎮 Session:" : "⛓ Series:";
+      const unit = c.kind === "session" ? "games" : "games";
       blocks.push(
-        <div className={"series-box" + (existing ? " existing" : "")} key={"s:" + s.id}>
+        <div className={boxClass} key={c.key}>
           <div className="series-head">
-            <b>⛓ Series:</b>
-            <span className="series-score">{existing ? existing.name : seriesScoreLine(s)}</span>
-            <span className="muted">({s.replays.length} games)</span>
+            <b>{label}</b>
+            <span className="series-score">{c.title}</span>
+            <span className="muted">({c.replays.length} {unit})</span>
             <div style={{ flex: 1 }} />
             {existing ? (
               <button onClick={() => onOpenGroup && onOpenGroup(existing)}>Open group</button>
             ) : (
               <>
-                <button onClick={() => selectSeries(s)}>Select series</button>
-                <button className="primary" onClick={() => openCreateModal(s)}>Add to group…</button>
+                <button onClick={() => selectCluster(c)}>Select {c.kind}</button>
+                <button className="primary" onClick={() => openCreateModal(c)}>Add to group…</button>
               </>
             )}
           </div>
@@ -185,14 +219,16 @@ export default function ReplayList({
     }
   }
 
-  const newSeries = series.filter((s) => !s.existingGroup).length;
-  const existingSeries = series.length - newSeries;
+  const newSeries = clusters.filter((c) => c.kind === "series" && !c.existingGroup).length;
+  const newSessions = clusters.filter((c) => c.kind === "session" && !c.existingGroup).length;
+  const existingClusters = clusters.filter((c) => c.existingGroup).length;
 
   return (
     <div className="content" style={{ minHeight: 0 }}>
       <div className="toolbar">
         <span className="muted">
-          {replays.length} replays · {newSeries} new series{existingSeries ? ` · ${existingSeries} already grouped` : ""}
+          {replays.length} replays · {newSeries} series · {newSessions} sessions
+          {existingClusters ? ` · ${existingClusters} already grouped` : ""}
           {loading ? " · " : ""}{loading ? <Spinner small /> : null}
         </span>
         <div style={{ flex: 1 }} />

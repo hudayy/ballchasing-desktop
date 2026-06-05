@@ -160,8 +160,10 @@ function sideName(rosters: TeamSide[], user: UserOpts, isUserSide: boolean): str
     if (idx > 0) { names.splice(idx, 1); names.unshift(user.myName); }   // user first
     else if (idx === -1) names.unshift(user.myName);
   }
-  if (names.length) return names.join(" + ");
-  return rep.name || "Team";
+  if (!names.length) return rep.name || "Team";
+  // 3v3+: "Team <lead>" (user's name on the user's side); 1v1/2v2: "a + b"
+  if (names.length >= 3) return "Team " + names[0];
+  return names.join(" + ");
 }
 
 function whichSide(aRosters: TeamSide[], bRosters: TeamSide[], user: UserOpts): "a" | "b" | null {
@@ -235,4 +237,101 @@ function seriesDate(series: Series): string | null {
   if (!d) return null;
   const dt = new Date(d);
   return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+}
+
+// ===========================================================================
+// SESSION detection (matchmaking): the user plays 3+ ranked/casual games while
+// partied with the same teammate(s). Distinct from series (private matches).
+// ===========================================================================
+export interface Session {
+  id: string;
+  replays: ReplaySummary[];        // chronological
+  mode: "ranked" | "casual";
+  teamSize: number;                // 2 for 2v2, 3 for 3v3, ...
+  mates: string[];                 // the user's teammate name(s)
+  existingGroup: GroupRef | null;
+}
+
+// ranked vs casual vs not-matchmaking (check "unranked" before "ranked"!)
+function playlistKind(playlist: string | null): "ranked" | "casual" | null {
+  const p = (playlist || "").toLowerCase();
+  if (p.includes("private") || p.includes("tournament")) return null;
+  if (p.includes("unranked") || p.includes("casual")) return "casual";
+  if (p.includes("ranked")) return "ranked";
+  return null;
+}
+
+function userSideOf(r: ReplaySummary, user: UserOpts): TeamSide | null {
+  if (sideHasUser(r.blue, user)) return r.blue;
+  if (sideHasUser(r.orange, user)) return r.orange;
+  return null;
+}
+
+// teammate names on the user's side (excluding the user)
+function matesOf(side: TeamSide, user: UserOpts): string[] {
+  const myName = (user.myName || "").toLowerCase();
+  return side.playerNames.filter((n) => n.toLowerCase() !== myName).sort();
+}
+
+export function detectSessions(allReplays: ReplaySummary[], user: UserOpts = {}): Session[] {
+  if (!user.myId && !user.myName) return [];
+
+  // user's matchmaking games, chronological
+  const mine = allReplays
+    .map((r) => ({ r, kind: playlistKind(r.playlist), side: userSideOf(r, user) }))
+    .filter((x) => x.kind && x.side) as { r: ReplaySummary; kind: "ranked" | "casual"; side: TeamSide }[];
+  mine.sort((a, b) => time(a.r) - time(b.r));
+
+  const out: Session[] = [];
+  let cur: typeof mine = [];
+
+  const flush = () => {
+    if (cur.length >= 3) {
+      const first = cur[0];
+      const mates = matesOf(first.side, user);
+      out.push({
+        id: cur.map((x) => x.r.id).join(","),
+        replays: cur.map((x) => x.r),
+        mode: first.kind,
+        teamSize: first.side.playerNames.length,
+        mates,
+        existingGroup: commonGroup(cur.map((x) => x.r))
+      });
+    }
+    cur = [];
+  };
+
+  for (const g of mine) {
+    const mates = matesOf(g.side, user);
+    if (mates.length === 0) { flush(); continue; }            // solo queue -> not a party session
+    if (cur.length === 0) { cur = [g]; continue; }
+    const prev = cur[cur.length - 1];
+    const sameMates = matesOf(prev.side, user).join("|") === mates.join("|");
+    const same = prev.kind === g.kind && sameMates && Math.abs(time(g.r) - time(prev.r)) <= MAX_GAP_MS;
+    if (same) cur.push(g);
+    else { flush(); cur = [g]; }
+  }
+  flush();
+  return out;
+}
+
+function joinAnd(names: string[]): string {
+  if (names.length <= 1) return names[0] || "teammate";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+export function suggestSessionNames(s: Session): string[] {
+  const n = s.teamSize;
+  const mates = joinAnd(s.mates);
+  const prefix = s.mode === "casual" ? "Casual " : "";
+  return [
+    `${prefix}${n}v${n} Session with ${mates}`,
+    `${prefix}${n}s with ${mates}`,
+    `${prefix}${n}s Session with ${mates}`
+  ];
+}
+
+export function sessionTitle(s: Session): string {
+  return suggestSessionNames(s)[0];
 }

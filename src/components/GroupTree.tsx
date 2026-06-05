@@ -23,6 +23,8 @@ export default function GroupTree({
   const [nodes, setNodes] = useState<Record<string, NodeState>>({});
   const [multiSel, setMultiSel] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [creatingParent, setCreatingParent] = useState<string | null>(null); // inline new-subgroup row
+  const [newName, setNewName] = useState("");
   const [, forceRender] = useState(0);
   const groupById = useRef<Record<string, Group>>({});
   const dragging = useRef<string[]>([]);
@@ -121,16 +123,43 @@ export default function GroupTree({
     if (target && nodes[target.id]?.loaded) { setNode(target.id, { expanded: true }); await loadChildren(target.id, true); }
   };
 
-  const createSubgroup = async (parent: Group | null) => {
-    const name = prompt(parent ? `New subgroup under "${parent.name}":` : "New top-level group name:");
-    if (!name) return;
+  // ---- inline "new subgroup" creation ----
+  const startCreate = async (parentId: string) => {
+    setNewName("");
+    setCreatingParent(parentId);
+    if (parentId !== ROOT) {
+      setNode(parentId, { expanded: true });
+      if (!nodes[parentId]?.loaded) await loadChildren(parentId);
+    }
+  };
+  const cancelCreate = () => { setCreatingParent(null); setNewName(""); };
+  const commitCreate = async () => {
+    const name = newName.trim();
+    const parentId = creatingParent;
+    if (!name || parentId == null) { cancelCreate(); return; }
     const body: any = { name, player_identification: "by-id", team_identification: "by-distinct-players" };
-    if (parent) body.parent = parent.id;
+    if (parentId !== ROOT) body.parent = parentId;
+    cancelCreate();
     const res = await window.api.createGroup(body);
     if (!res.ok) { alert("Create failed: " + res.error); return; }
-    if (parent) { setNode(parent.id, { expanded: true }); await loadChildren(parent.id, true); }
+    if (parentId !== ROOT) { setNode(parentId, { expanded: true }); await loadChildren(parentId, true); }
     else await loadChildren(ROOT, true);
   };
+
+  const createRow = (parentId: string, depth: number) => (
+    <div className="tree-row create-row" style={{ paddingLeft: 6 + depth * 15 }}>
+      <span className="twisty" />
+      <input
+        className="create-input"
+        autoFocus
+        placeholder="New subgroup name… (Enter to create, Esc to cancel)"
+        value={newName}
+        onChange={(e) => setNewName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") commitCreate(); else if (e.key === "Escape") cancelCreate(); }}
+        onBlur={() => { if (!newName.trim()) cancelCreate(); }}
+      />
+    </div>
+  );
 
   const renameGroup = async (g: Group) => {
     const name = prompt("Rename group:", g.name);
@@ -181,13 +210,14 @@ export default function GroupTree({
             {fav ? "★" : "☆"}
           </span>
           <span className="rowactions">
-            <button title="New subgroup" onClick={(e) => { e.stopPropagation(); createSubgroup(g); }}>＋</button>
+            <button title="New subgroup" onClick={(e) => { e.stopPropagation(); startCreate(g.id); }}>＋</button>
             <button title="Rename" onClick={(e) => { e.stopPropagation(); renameGroup(g); }}>✎</button>
             <button title="Delete" onClick={(e) => { e.stopPropagation(); deleteGroup(g); }}>🗑</button>
           </span>
         </div>
         {st?.expanded ? (
           <div>
+            {creatingParent === g.id ? createRow(g.id, depth + 1) : null}
             {st.loading && !st.children ? (
               <div className="tree-row" style={{ paddingLeft: 6 + (depth + 1) * 15 }}><span className="skeleton">loading…</span></div>
             ) : (
@@ -206,7 +236,7 @@ export default function GroupTree({
       <div className="head">
         <b className="grow">Groups</b>
         {multiSel.size > 1 && <span className="muted" style={{ fontSize: 11 }}>{multiSel.size} sel</span>}
-        <button title="New top-level group" onClick={() => createSubgroup(null)}>＋ New</button>
+        <button title="New top-level group" onClick={() => startCreate(ROOT)}>＋ New</button>
         <button title="Refresh" onClick={() => loadChildren(ROOT, true)}>⟳</button>
       </div>
       <div
@@ -215,9 +245,10 @@ export default function GroupTree({
         onDrop={(e) => { e.preventDefault(); onDrop(null); }}
         title="Ctrl-click to multi-select. Drag groups onto another to re-parent; drop on empty space to move to top level."
       >
+        {creatingParent === ROOT ? createRow(ROOT, 0) : null}
         {root?.loading && !root?.children ? (
           <div className="pad muted">Loading groups…</div>
-        ) : (root?.children || []).length === 0 ? (
+        ) : (root?.children || []).length === 0 && creatingParent !== ROOT ? (
           <div className="pad muted">No groups yet. Create one with “＋ New”.</div>
         ) : (
           (root?.children || []).map((g) => renderNode(g, 0))

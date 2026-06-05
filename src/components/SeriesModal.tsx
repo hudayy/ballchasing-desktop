@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import GroupPickerTree from "./GroupPickerTree";
 import Spinner from "./Spinner";
 
@@ -19,6 +19,9 @@ export default function SeriesModal({
   const [target, setTarget] = useState<{ id: string; name: string } | null>(null);    // for add-to-existing
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  // Only dismiss when a click both STARTS and ENDS on the backdrop itself, so
+  // drag-selecting text inside a field and releasing outside doesn't close it.
+  const downOnBackdrop = useRef(false);
 
   const addReplays = async (gid: string) => {
     let done = 0;
@@ -45,8 +48,12 @@ export default function SeriesModal({
   };
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="modal-back"
+      onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (downOnBackdrop.current && e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="modal wide" onMouseDown={(e) => e.stopPropagation()}>
         <h3>Add series to a replay group</h3>
         <div className="muted">{replayIds.length} replays selected.</div>
 

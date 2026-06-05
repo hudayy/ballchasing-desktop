@@ -112,6 +112,8 @@ input:focus, select:focus { outline: 1px solid var(--accent); }
 .tree-row .rowactions button { background: transparent; border: none; padding: 0 3px; font-size: 11px; line-height: 18px; color: var(--text-dim); }
 .tree-row .rowactions button:hover { color: var(--text); background: transparent; }
 .tree-row .skeleton { color: var(--text-dim); font-style: italic; }
+.tree-row.create-row { padding-top: 2px; padding-bottom: 2px; }
+.create-input { flex: 1 1 auto; min-width: 0; font-size: 12px; padding: 3px 6px; }
 
 /* Generic table */
 .tablewrap { overflow: auto; flex: 1; }
@@ -147,9 +149,11 @@ table.stat tr:hover td { filter: brightness(1.15); }
 /* Series box: thin, light-blue, rounded outline; games contained inside, banner on top */
 .series-box { border: 1px solid rgba(90, 160, 255, 0.55); border-radius: 10px; margin: 10px 2px; overflow: hidden; background: rgba(90, 160, 255, 0.04); }
 .series-box.existing { border-color: rgba(63, 174, 143, 0.6); background: rgba(63, 174, 143, 0.05); }
+.series-box.session { border-color: rgba(176, 122, 255, 0.6); background: rgba(176, 122, 255, 0.05); }
 .series-head { display: flex; gap: 8px; align-items: center; padding: 7px 10px; background: rgba(90, 160, 255, 0.10);
   border-bottom: 1px solid rgba(90, 160, 255, 0.35); flex-wrap: wrap; }
 .series-box.existing .series-head { background: rgba(63, 174, 143, 0.10); border-bottom-color: rgba(63, 174, 143, 0.35); }
+.series-box.session .series-head { background: rgba(176, 122, 255, 0.12); border-bottom-color: rgba(176, 122, 255, 0.38); }
 .series-head .series-score { font-weight: 600; }
 .series-games .replay-row:last-child { border-bottom: none; }
 .replay-row.in-series { border-left: none; }

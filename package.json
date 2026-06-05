@@ -1,6 +1,6 @@
 {
   "name": "ballchasing-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop client for ballchasing.com built entirely on the public API.",
   "author": "hudayy",
   "license": "MIT",
