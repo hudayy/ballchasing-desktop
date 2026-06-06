@@ -248,15 +248,18 @@ function seriesDate(series: Series): string | null {
 }
 
 // ===========================================================================
-// SESSION detection (matchmaking): the user plays 3+ ranked/casual games while
-// partied with the same teammate(s). Distinct from series (private matches).
+// SESSION detection (matchmaking): the user plays 3+ ranked/casual games of the
+// same mode back-to-back. If a teammate is present in every game it's a "party"
+// session (named with them); otherwise it's a "solo" session. Distinct from
+// series (private matches).
 // ===========================================================================
 export interface Session {
   id: string;
   replays: ReplaySummary[];        // chronological
   mode: "ranked" | "casual";
   teamSize: number;                // 2 for 2v2, 3 for 3v3, ...
-  mates: string[];                 // the user's teammate name(s)
+  mates: string[];                 // constant teammate name(s); empty when solo
+  solo: boolean;                   // no constant teammate across the session
   existingGroup: GroupRef | null;
 }
 
@@ -295,27 +298,34 @@ export function detectSessions(allReplays: ReplaySummary[], user: UserOpts = {})
 
   const flush = () => {
     if (cur.length >= 3) {
-      const first = cur[0];
-      const mates = matesOf(first.side, user);
+      // constant teammate(s) = intersection of mate names across every game
+      let inter: string[] | null = null;
+      for (const g of cur) {
+        const m = new Set(matesOf(g.side, user));
+        inter = inter === null ? Array.from(m) : inter.filter((n) => m.has(n));
+      }
+      const mates = inter || [];
       out.push({
         id: cur.map((x) => x.r.id).join(","),
         replays: cur.map((x) => x.r),
-        mode: first.kind,
-        teamSize: first.side.playerNames.length,
+        mode: cur[0].kind,
+        teamSize: cur[0].side.playerNames.length,
         mates,
+        solo: mates.length === 0,
         existingGroup: commonGroup(cur.map((x) => x.r))
       });
     }
     cur = [];
   };
 
+  // cluster by same mode + same team size + close in time (party OR solo)
   for (const g of mine) {
-    const mates = matesOf(g.side, user);
-    if (mates.length === 0) { flush(); continue; }            // solo queue -> not a party session
     if (cur.length === 0) { cur = [g]; continue; }
     const prev = cur[cur.length - 1];
-    const sameMates = matesOf(prev.side, user).join("|") === mates.join("|");
-    const same = prev.kind === g.kind && sameMates && Math.abs(time(g.r) - time(prev.r)) <= MAX_GAP_MS;
+    const same =
+      prev.kind === g.kind &&
+      prev.side.playerNames.length === g.side.playerNames.length &&
+      Math.abs(time(g.r) - time(prev.r)) <= MAX_GAP_MS;
     if (same) cur.push(g);
     else { flush(); cur = [g]; }
   }
@@ -331,8 +341,13 @@ function joinAnd(names: string[]): string {
 
 export function suggestSessionNames(s: Session): string[] {
   const n = s.teamSize;
-  const mates = joinAnd(s.mates);
   const prefix = s.mode === "casual" ? "Casual " : "";
+  if (s.solo) {
+    // duels are inherently solo — no "Solo" qualifier needed
+    if (n <= 1) return [`${prefix}${n}v${n} Session`, `${prefix}${n}s Session`, `${prefix}${n}s`];
+    return [`${prefix}Solo ${n}v${n} Session`, `${prefix}Solo ${n}s Session`, `${prefix}Solo ${n}s`];
+  }
+  const mates = joinAnd(s.mates);
   return [
     `${prefix}${n}v${n} Session with ${mates}`,
     `${prefix}${n}s with ${mates}`,
