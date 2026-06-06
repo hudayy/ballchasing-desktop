@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange } from "../lib/store";
+import { cellColor, columnStats } from "../lib/heat";
+import { ScoreText } from "./ScoreText";
+
+// Total replays in a group's subtree (indirect already includes direct on ballchasing).
+const groupTotal = (g: { direct_replays?: number; indirect_replays?: number }) =>
+  g.indirect_replays || g.direct_replays || 0;
 
 interface Group {
   id: string;
@@ -177,12 +183,17 @@ export default function GroupTree({
     await loadChildren(ROOT, true);
   };
 
+  // heat scale for the count pills, across all groups discovered so far
+  const countStats = columnStats(Object.values(groupById.current).map(groupTotal));
+
   const renderNode = (g: Group, depth: number): React.ReactNode => {
     const st = nodes[g.id];
     const expandable = hasChildren(g);
     const isDrop = dropTarget === g.id;
     const fav = isFavorite(g.id);
     const isSel = selectedId === g.id || multiSel.has(g.id);
+    const total = groupTotal(g);
+    const pillBg = cellColor(total, countStats, false, true);
     return (
       <div className="tree-node" key={g.id}>
         <div
@@ -198,9 +209,9 @@ export default function GroupTree({
           <span className="twisty" onClick={(e) => { e.stopPropagation(); if (expandable) toggle(g); }}>
             {expandable ? (st?.expanded ? "▾" : "▸") : ""}
           </span>
-          <span className="name" title={g.name}>{g.name}</span>
-          <span className="badge" title="direct / indirect replays">
-            {g.direct_replays ?? 0}{(g.indirect_replays || 0) ? `/${g.indirect_replays}` : ""}
+          <span className="name" title={g.name}><ScoreText text={g.name} /></span>
+          <span className="badge" title="replays (including subgroups)" style={pillBg ? { background: pillBg, color: "#e7eefb" } : undefined}>
+            {total}
           </span>
           <span
             className={"star" + (fav ? " on" : "")}

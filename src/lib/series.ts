@@ -152,9 +152,19 @@ function buildSeries(replays: ReplaySummary[], user: UserOpts): Series {
 //  * explicit team name (SAN/DEN) wins if consistently present
 //  * otherwise list the FULL lineup of the representative game joined by " + "
 //    (e.g. "huday + Burmyy"), with the user's name first on the user's side.
+// RL team names are entered ALL CAPS. For nicer suggestions, title-case them
+// (First letter up, rest down) — but keep <=3 char names uppercase since those
+// are almost always abbreviations (SAN, DEN, MKE).
+export function formatTeamName(name: string): string {
+  const t = (name || "").trim();
+  if (!t) return t;
+  if (t.length <= 3) return t.toUpperCase();
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
 function sideName(rosters: TeamSide[], user: UserOpts, isUserSide: boolean): string {
   const named = rosters.find((s) => s.name && s.name.trim());
-  if (named && rosters.every((s) => !s.name || s.name === named.name)) return named.name!.trim();
+  if (named && rosters.every((s) => !s.name || s.name === named.name)) return formatTeamName(named.name!);
 
   // representative roster: the game where the user appears (user side), else game 0
   let rep = rosters[0];
@@ -343,9 +353,9 @@ export function suggestSessionNames(s: Session): string[] {
   const n = s.teamSize;
   const prefix = s.mode === "casual" ? "Casual " : "";
   if (s.solo) {
-    // duels are inherently solo — no "Solo" qualifier needed
+    // duels are inherently solo — no "Solo queue" qualifier needed
     if (n <= 1) return [`${prefix}${n}v${n} Session`, `${prefix}${n}s Session`, `${prefix}${n}s`];
-    return [`${prefix}Solo ${n}v${n} Session`, `${prefix}Solo ${n}s Session`, `${prefix}Solo ${n}s`];
+    return [`${prefix}Solo queue ${n}v${n} Session`, `${prefix}Solo queue ${n}s Session`, `${prefix}Solo queue ${n}s`];
   }
   const mates = joinAnd(s.mates);
   return [
@@ -357,4 +367,15 @@ export function suggestSessionNames(s: Session): string[] {
 
 export function sessionTitle(s: Session): string {
   return suggestSessionNames(s)[0];
+}
+
+// Win/loss game differential for the user across a session (e.g. 5W-2L => +3).
+export function sessionDiff(s: Session, user: UserOpts): number {
+  let w = 0, l = 0;
+  for (const r of s.replays) {
+    const us = userScore(r, user);
+    if (!us.present) continue;
+    if (us.won) w++; else l++;
+  }
+  return w - l;
 }

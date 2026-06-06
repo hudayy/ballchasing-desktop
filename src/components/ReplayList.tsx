@@ -2,10 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { toSummary } from "../lib/normalize";
 import {
   detectSeries, suggestNames, seriesScoreLine, Series, ReplaySummary, teamNameFallback, userScore,
-  detectSessions, suggestSessionNames, sessionTitle, GroupRef
+  detectSessions, suggestSessionNames, sessionTitle, sessionDiff, GroupRef
 } from "../lib/series";
 import SeriesModal from "./SeriesModal";
 import Spinner from "./Spinner";
+import { ScoreText, DiffChip } from "./ScoreText";
 
 interface Cluster {
   key: string;
@@ -14,6 +15,7 @@ interface Cluster {
   title: string;
   suggestions: string[];
   existingGroup: GroupRef | null;
+  diff?: number; // sessions only: user game differential
 }
 
 export default function ReplayList({
@@ -74,7 +76,8 @@ export default function ReplayList({
       out.push({
         key: "ss:" + s.id, kind: "session", replays: s.replays,
         title: s.existingGroup ? s.existingGroup.name : sessionTitle(s),
-        suggestions: suggestSessionNames(s), existingGroup: s.existingGroup
+        suggestions: suggestSessionNames(s), existingGroup: s.existingGroup,
+        diff: sessionDiff(s, user)
       });
     }
     return out;
@@ -206,16 +209,17 @@ export default function ReplayList({
         <div className={boxClass} key={c.key}>
           <div className="series-head">
             <b>{label}</b>
-            <span className="series-score">{c.title}</span>
+            <span className="series-score">
+              {c.kind === "session" && typeof c.diff === "number" ? <DiffChip diff={c.diff} /> : null}
+              <ScoreText text={c.title} />
+            </span>
             <span className="muted">({c.replays.length} {unit})</span>
             <div style={{ flex: 1 }} />
+            <button onClick={() => selectCluster(c)}>Select</button>
             {existing ? (
               <button onClick={() => onOpenGroup && onOpenGroup(existing)}>Open group</button>
             ) : (
-              <>
-                <button onClick={() => selectCluster(c)}>Select {c.kind}</button>
-                <button className="primary" onClick={() => openCreateModal(c)}>Add to group…</button>
-              </>
+              <button className="primary" onClick={() => openCreateModal(c)}>Add to group…</button>
             )}
           </div>
           <div className="series-games">{games.map((g) => replayRow(byId[g.id]))}</div>

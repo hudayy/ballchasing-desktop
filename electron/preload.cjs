@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("api", {
   uploadReplay: (filePath, opts) => invoke("upload:replay", filePath, opts),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return file && file.path || ""; } },
   openExternal: (url) => invoke("open-external", url),
+  readClipboard: () => invoke("clipboard:read"),
 
   // Updates
   appVersion: () => invoke("app:version"),

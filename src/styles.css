@@ -218,6 +218,24 @@ input[type="checkbox"].chk:checked::after {
 .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--text-dim); }
 
 /* ---- Browse button + stat category tabs / toggle ---- */
+/* Boxed score chip (series/group names) + session game-differential chip */
+.score-chip { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; margin: 0 3px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg); font-variant-numeric: tabular-nums; vertical-align: baseline; }
+.score-chip .sc-win { font-weight: 700; color: #eaf1fb; }
+.score-chip .sc-lose { color: var(--text-dim); }
+.score-chip .sc-dash { color: var(--text-dim); }
+.diff-chip { display: inline-flex; align-items: center; padding: 0 6px; margin-right: 6px; border: 1px solid transparent;
+  border-radius: 6px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.diff-chip.win { border-color: rgba(46, 204, 113, 0.85); box-shadow: 0 0 7px rgba(46, 204, 113, 0.5); color: #7be0a3; }
+.diff-chip.loss { border-color: rgba(229, 72, 77, 0.9); box-shadow: 0 0 7px rgba(229, 72, 77, 0.5); color: #ff9a9d; }
+.diff-chip.neutral { border-color: var(--border); color: var(--text-dim); }
+
+/* Link opener (sidebar) */
+.linkopener { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.linkopener input { flex: 1; min-width: 0; }
+.linkopener input.bad { outline: 1px solid var(--danger); }
+.linkopener button { padding: 4px 8px; }
+
 .upload-zone { display: flex; align-items: center; gap: 10px; padding: 12px; margin: 8px; cursor: pointer;
   border: 1.5px dashed var(--border); border-radius: 10px; color: var(--text-dim); background: var(--bg-3); transition: border-color .12s, background .12s; }
 .upload-zone:hover { border-color: var(--accent); color: var(--text); }

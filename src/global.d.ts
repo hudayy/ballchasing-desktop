@@ -31,6 +31,7 @@ declare global {
     uploadReplay(filePath: string, opts?: { visibility?: string; group?: string }): Promise<ApiResult<any> & { duplicate?: boolean }>;
     pathForFile(file: File): string;
     openExternal(url: string): Promise<void>;
+    readClipboard(): Promise<string>;
 
     appVersion(): Promise<string>;
     checkForUpdates(): Promise<{ ok: boolean; version?: string; current?: string; reason?: string; error?: string }>;

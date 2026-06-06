@@ -8,7 +8,7 @@
 //
 // The ballchasing.com API key never leaves the main process.
 
-const { app, BrowserWindow, ipcMain, safeStorage, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, safeStorage, shell, dialog, clipboard } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -528,6 +528,7 @@ function registerIpc() {
   });
 
   ipcMain.handle("open-external", (_e, url) => shell.openExternal(url));
+  ipcMain.handle("clipboard:read", () => clipboard.readText());
 
   ipcMain.handle("update:check", async () => {
     if (!autoUpdater || !app.isPackaged) return { ok: false, reason: "not-packaged", version: app.getVersion() };

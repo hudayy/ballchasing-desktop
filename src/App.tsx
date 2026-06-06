@@ -9,6 +9,8 @@ import Spinner from "./components/Spinner";
 import UpdateBadge from "./components/UpdateBadge";
 import Settings from "./components/Settings";
 import UploadZone from "./components/UploadZone";
+import LinkOpener from "./components/LinkOpener";
+import { ScoreText } from "./components/ScoreText";
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -75,6 +77,7 @@ export default function App() {
       <div className="body">
         <div className="sidebar" style={{ width: sidebarW }}>
           <UploadZone onUploaded={refreshTree} />
+          <LinkOpener onOpenReplay={setOpenReplay} onOpenGroup={openGroup} />
           <div className={"browse-btn" + (browse ? " active" : "")} onClick={openBrowse}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px", marginRight: 7 }}>
               <rect x="3" y="4" width="18" height="5" rx="1.5" /><rect x="3" y="13" width="18" height="5" rx="1.5" />
@@ -95,7 +98,7 @@ export default function App() {
           ) : selectedGroup ? (
             <div className="content">
               <div className="toolbar">
-                <b>{selectedGroup.name}</b>
+                <b><ScoreText text={selectedGroup.name} /></b>
                 <span className="muted">group stats</span>
                 <div style={{ flex: 1 }} />
                 <button onClick={() => window.api.openExternal(`https://ballchasing.com/group/${selectedGroup.id}`)}>Open on web ↗</button>
