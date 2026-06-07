@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange } from "../lib/store";
+import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange, getLinkedGroups, removeLinkedGroup } from "../lib/store";
 import { cellColor, columnStats } from "../lib/heat";
 import { ScoreText } from "./ScoreText";
 
@@ -34,42 +34,55 @@ export default function GroupTree({
   const [, forceRender] = useState(0);
   const groupById = useRef<Record<string, Group>>({});
   const dragging = useRef<string[]>([]);
+  // ids of nodes that belong to a LINKED (not-owned) subtree — fetched without creator=me
+  const externalIds = useRef<Set<string>>(new Set());
 
-  // re-render on favorite changes
+  // re-render on favorite / linked-group changes
   useEffect(() => onStoreChange(() => forceRender((n) => n + 1)), []);
 
   const setNode = (id: string, patch: Partial<NodeState>) =>
     setNodes((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
 
-  const loadChildren = useCallback(async (id: string, force = false) => {
+  // `external` => a group the user doesn't own; list children without creator=me.
+  const loadChildren = useCallback(async (id: string, force = false, external = false) => {
     setNode(id, { loading: true });
-    const params: any = { creator: "me", count: 200, "sort-by": "name", "sort-dir": "asc" };
+    const params: any = { count: 200, "sort-by": "name", "sort-dir": "asc" };
+    if (!external) params.creator = "me";
     if (id !== ROOT) params.group = id;
     const res = await window.api.listGroups(params, { force });
     const list: Group[] = (res.ok && res.data && res.data.list) || [];
-    list.forEach((g) => (groupById.current[g.id] = g));
+    list.forEach((g) => {
+      groupById.current[g.id] = g;
+      if (external) externalIds.current.add(g.id);
+    });
     registerKnownGroups(list.map((g) => ({ id: g.id, name: g.name })), id === ROOT ? null : id);
     emitStoreChange();
     setNode(id, { children: list, loading: false, loaded: true });
     // smart background prefetch of grandchildren
     for (const child of list) {
       if ((child.indirect_replays || 0) > 0) {
-        window.api.listGroups({ creator: "me", count: 200, group: child.id, "sort-by": "name", "sort-dir": "asc" }).catch(() => {});
+        const p: any = { count: 200, group: child.id, "sort-by": "name", "sort-dir": "asc" };
+        if (!external) p.creator = "me";
+        window.api.listGroups(p).catch(() => {});
       }
     }
     return list;
   }, []);
 
-  useEffect(() => { groupById.current = {}; setNodes({}); loadChildren(ROOT, true); }, [refreshSignal, loadChildren]);
+  useEffect(() => { groupById.current = {}; setNodes({}); externalIds.current = new Set(); loadChildren(ROOT, true); }, [refreshSignal, loadChildren]);
+
+  const isExternal = (id: string) => externalIds.current.has(id);
 
   const toggle = async (g: Group) => {
     const st = nodes[g.id];
     if (st?.expanded) { setNode(g.id, { expanded: false }); return; }
     setNode(g.id, { expanded: true });
-    if (!st?.loaded) await loadChildren(g.id);
+    if (!st?.loaded) await loadChildren(g.id, false, isExternal(g.id));
   };
 
-  const hasChildren = (g: Group) => (g.indirect_replays || 0) > 0;
+  // Owned groups know they have subgroups via indirect counts. Linked groups
+  // often lack counts, so always allow expanding them.
+  const hasChildren = (g: Group) => isExternal(g.id) || (g.indirect_replays || 0) > 0;
 
   // flattened order of currently-visible nodes (for shift-range select)
   const visibleOrder = (): string[] => {
@@ -186,33 +199,42 @@ export default function GroupTree({
   // heat scale for the count pills, across all groups discovered so far
   const countStats = columnStats(Object.values(groupById.current).map(groupTotal));
 
+  const unpinLinked = (g: Group) => {
+    removeLinkedGroup(g.id);
+    if (selectedId === g.id) onSelect(null);
+    emitStoreChange();
+  };
+
   const renderNode = (g: Group, depth: number): React.ReactNode => {
     const st = nodes[g.id];
+    const external = isExternal(g.id);
+    const linkedRoot = external && getLinkedGroups().some((x) => x.id === g.id);
     const expandable = hasChildren(g);
     const isDrop = dropTarget === g.id;
     const fav = isFavorite(g.id);
     const isSel = selectedId === g.id || multiSel.has(g.id);
     const total = groupTotal(g);
-    const pillBg = cellColor(total, countStats, false, true);
+    const hasCount = g.direct_replays != null || g.indirect_replays != null;
+    const pillBg = hasCount ? cellColor(total, countStats, false, true) : undefined;
     return (
       <div className="tree-node" key={g.id}>
         <div
           className={"tree-row" + (isSel ? " selected" : "") + (isDrop ? " drop-target" : "")}
           style={{ paddingLeft: 6 + depth * 15 }}
           onClick={(e) => rowClick(g, e)}
-          draggable
-          onDragStart={(e) => { onDragStart(g); e.dataTransfer.effectAllowed = "move"; }}
-          onDragOver={(e) => { if (dragging.current.length) { e.preventDefault(); setDropTarget(g.id); } }}
-          onDragLeave={() => setDropTarget((t) => (t === g.id ? null : t))}
-          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); onDrop(g); }}
+          draggable={!external}
+          onDragStart={external ? undefined : (e) => { onDragStart(g); e.dataTransfer.effectAllowed = "move"; }}
+          onDragOver={external ? undefined : (e) => { if (dragging.current.length) { e.preventDefault(); setDropTarget(g.id); } }}
+          onDragLeave={external ? undefined : () => setDropTarget((t) => (t === g.id ? null : t))}
+          onDrop={external ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); onDrop(g); }}
         >
           <span className="twisty" onClick={(e) => { e.stopPropagation(); if (expandable) toggle(g); }}>
             {expandable ? (st?.expanded ? "▾" : "▸") : ""}
           </span>
           <span className="name" title={g.name}><ScoreText text={g.name} /></span>
-          <span className="badge" title="replays (including subgroups)" style={pillBg ? { background: pillBg, color: "#e7eefb" } : undefined}>
-            {total}
-          </span>
+          {hasCount ? (
+            <span className="badge" title="replays (including subgroups)" style={pillBg ? { background: pillBg, color: "#e7eefb" } : undefined}>{total}</span>
+          ) : null}
           <span
             className={"star" + (fav ? " on" : "")}
             title={fav ? "Unfavorite" : "Favorite"}
@@ -221,9 +243,15 @@ export default function GroupTree({
             {fav ? "★" : "☆"}
           </span>
           <span className="rowactions">
-            <button title="New subgroup" onClick={(e) => { e.stopPropagation(); startCreate(g.id); }}>＋</button>
-            <button title="Rename" onClick={(e) => { e.stopPropagation(); renameGroup(g); }}>✎</button>
-            <button title="Delete" onClick={(e) => { e.stopPropagation(); deleteGroup(g); }}>🗑</button>
+            {external ? (
+              linkedRoot ? <button title="Remove linked group" onClick={(e) => { e.stopPropagation(); unpinLinked(g); }}>✕</button> : null
+            ) : (
+              <>
+                <button title="New subgroup" onClick={(e) => { e.stopPropagation(); startCreate(g.id); }}>＋</button>
+                <button title="Rename" onClick={(e) => { e.stopPropagation(); renameGroup(g); }}>✎</button>
+                <button title="Delete" onClick={(e) => { e.stopPropagation(); deleteGroup(g); }}>🗑</button>
+              </>
+            )}
           </span>
         </div>
         {st?.expanded ? (
@@ -241,6 +269,10 @@ export default function GroupTree({
   };
 
   const root = nodes[ROOT];
+  // linked (not-owned) groups pasted via a link; exclude any that are actually owned
+  const ownedTop = new Set((root?.children || []).map((g) => g.id));
+  const linkedRoots = getLinkedGroups().filter((g) => !ownedTop.has(g.id));
+  linkedRoots.forEach((g) => externalIds.current.add(g.id));
 
   return (
     <>
@@ -263,6 +295,13 @@ export default function GroupTree({
           <div className="pad muted">No groups yet. Create one with “＋ New”.</div>
         ) : (
           (root?.children || []).map((g) => renderNode(g, 0))
+        )}
+
+        {linkedRoots.length > 0 && (
+          <>
+            <div className="picker-section" title="Groups you opened from a link (not owned by you)">Linked groups</div>
+            {linkedRoots.map((g) => renderNode(g as Group, 0))}
+          </>
         )}
       </div>
     </>

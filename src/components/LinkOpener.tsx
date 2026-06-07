@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { addLinkedGroup, emitStoreChange } from "../lib/store";
 
 // Parse a ballchasing.com replay/group link (or a bare id) into { type, id }.
 export function parseBcLink(input: string): { type: "replay" | "group"; id: string } | null {
@@ -31,6 +32,9 @@ export default function LinkOpener({
       // resolve the group name for a nicer header; fall back to the id
       let name = parsed.id;
       try { const r = await window.api.getGroup(parsed.id); if (r.ok && r.data?.name) name = r.data.name; } catch {}
+      // pin it into the tree's "Linked groups" section so it's browsable
+      addLinkedGroup({ id: parsed.id, name });
+      emitStoreChange();
       onOpenGroup({ id: parsed.id, name });
     }
   };

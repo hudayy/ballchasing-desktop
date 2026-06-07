@@ -50,6 +50,24 @@ export function getTopParentName(id: string): string | null {
   return cur && cur.id !== id ? cur.name : null;
 }
 
+// --- linked groups (pasted via link, not owned by the user) ---
+const LINKED_KEY = "bc.linkedGroups";
+export function getLinkedGroups(): KnownGroup[] {
+  return read<KnownGroup[]>(LINKED_KEY, []);
+}
+export function addLinkedGroup(g: KnownGroup) {
+  const list = read<KnownGroup[]>(LINKED_KEY, []);
+  const idx = list.findIndex((x) => x.id === g.id);
+  if (idx >= 0) list[idx] = { id: g.id, name: g.name }; else list.unshift({ id: g.id, name: g.name });
+  write(LINKED_KEY, list);
+}
+export function removeLinkedGroup(id: string) {
+  write(LINKED_KEY, read<KnownGroup[]>(LINKED_KEY, []).filter((g) => g.id !== id));
+}
+export function isLinkedGroup(id: string): boolean {
+  return read<KnownGroup[]>(LINKED_KEY, []).some((g) => g.id === id);
+}
+
 // simple pub/sub so favorite stars update across components
 const listeners = new Set<() => void>();
 export function onStoreChange(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; }
