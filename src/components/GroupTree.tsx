@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange, getLinkedGroups, removeLinkedGroup } from "../lib/store";
+import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange, getLinkedGroups, removeLinkedGroup, getKnownGroups, getTopParentName } from "../lib/store";
 import { cellColor, columnStats } from "../lib/heat";
 import { ScoreText } from "./ScoreText";
 import { toast } from "../lib/toast";
@@ -34,6 +34,7 @@ export default function GroupTree({
   const [newName, setNewName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null); // inline rename
   const [renameVal, setRenameVal] = useState("");
+  const [filter, setFilter] = useState(""); // quick group-name filter
   const [, forceRender] = useState(0);
   const groupById = useRef<Record<string, Group>>({});
   const dragging = useRef<string[]>([]);
@@ -126,6 +127,29 @@ export default function GroupTree({
   // ---- drag & drop re-parenting (multi) ----
   const onDragStart = (g: Group) => {
     dragging.current = multiSel.has(g.id) && multiSel.size > 1 ? Array.from(multiSel) : [g.id];
+  };
+
+  // ---- replays dragged from the list and dropped onto a group ----
+  const REPLAY_MIME = "application/x-replay-ids";
+  const dropReplays = async (target: Group, payload: string) => {
+    setDropTarget(null);
+    let ids: string[] = [];
+    try { ids = JSON.parse(payload); } catch { return; }
+    if (!ids.length) return;
+    let failed = 0;
+    for (const id of ids) {
+      const res = await window.api.patchReplay(id, { group: target.id });
+      if (!res.ok) failed++;
+    }
+    toast(
+      failed
+        ? `Added ${ids.length - failed}/${ids.length} replay(s) to "${target.name}" (${failed} failed).`
+        : `Added ${ids.length} replay(s) to "${target.name}".`,
+      failed ? "error" : "success"
+    );
+    window.dispatchEvent(new Event("bc:replays-changed"));
+    await loadChildren(ROOT, true); // refresh counts
+    if (nodes[target.id]?.loaded) await loadChildren(target.id, true);
   };
   const onDrop = async (target: Group | null) => {
     const ids = dragging.current;
@@ -234,9 +258,16 @@ export default function GroupTree({
           onClick={(e) => rowClick(g, e)}
           draggable={!external}
           onDragStart={external ? undefined : (e) => { onDragStart(g); e.dataTransfer.effectAllowed = "move"; }}
-          onDragOver={external ? undefined : (e) => { if (dragging.current.length) { e.preventDefault(); setDropTarget(g.id); } }}
+          onDragOver={external ? undefined : (e) => {
+            if (dragging.current.length || e.dataTransfer.types.includes(REPLAY_MIME)) { e.preventDefault(); setDropTarget(g.id); }
+          }}
           onDragLeave={external ? undefined : () => setDropTarget((t) => (t === g.id ? null : t))}
-          onDrop={external ? undefined : (e) => { e.preventDefault(); e.stopPropagation(); onDrop(g); }}
+          onDrop={external ? undefined : (e) => {
+            e.preventDefault(); e.stopPropagation();
+            const payload = e.dataTransfer.getData(REPLAY_MIME);
+            if (payload) dropReplays(g, payload);
+            else onDrop(g);
+          }}
         >
           <span className="twisty" onClick={(e) => { e.stopPropagation(); if (expandable) toggle(g); }}>
             {expandable ? (st?.expanded ? "▾" : "▸") : ""}
@@ -299,6 +330,13 @@ export default function GroupTree({
   const linkedRoots = getLinkedGroups().filter((g) => !ownedTop.has(g.id));
   linkedRoots.forEach((g) => externalIds.current.add(g.id));
 
+  // quick filter: flat matches over every group we've ever seen (persisted
+  // registry), so it finds deeply nested groups without loading the whole tree
+  const q = filter.trim().toLowerCase();
+  const matches = q
+    ? getKnownGroups().filter((g) => g.name.toLowerCase().includes(q)).slice(0, 50)
+    : [];
+
   return (
     <>
       <div className="head">
@@ -307,25 +345,57 @@ export default function GroupTree({
         <button title="New top-level group" onClick={() => startCreate(ROOT)}>＋ New</button>
         <button title="Refresh" onClick={() => loadChildren(ROOT, true)}>⟳</button>
       </div>
+      <div className="tree-filter">
+        <input
+          placeholder="Filter groups…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") setFilter(""); }}
+        />
+        {filter ? <button title="Clear filter" onClick={() => setFilter("")}>✕</button> : null}
+      </div>
       <div
         className="tree"
         onDragOver={(e) => { if (dragging.current.length) e.preventDefault(); }}
         onDrop={(e) => { e.preventDefault(); onDrop(null); }}
-        title="Ctrl-click to multi-select. Drag groups onto another to re-parent; drop on empty space to move to top level."
+        title="Ctrl-click to multi-select. Drag groups onto another to re-parent; drop on empty space to move to top level. Drag replays from the list onto a group to add them."
       >
-        {creatingParent === ROOT ? createRow(ROOT, 0) : null}
-        {root?.loading && !root?.children ? (
-          <div className="pad muted">Loading groups…</div>
-        ) : (root?.children || []).length === 0 && creatingParent !== ROOT ? (
-          <div className="pad muted">No groups yet. Create one with “＋ New”.</div>
+        {q ? (
+          matches.length === 0 ? (
+            <div className="pad muted">No groups match “{filter.trim()}”.</div>
+          ) : (
+            matches.map((g) => {
+              const ctx = getTopParentName(g.id);
+              return (
+                <div
+                  key={g.id}
+                  className={"tree-row" + (selectedId === g.id ? " selected" : "")}
+                  onClick={() => onSelect({ id: g.id, name: g.name })}
+                >
+                  <span className="twisty" />
+                  <span className="name" title={g.name}><ScoreText text={g.name} /></span>
+                  {ctx ? <span className="muted" style={{ fontSize: 10, flex: "0 0 auto" }}>in {ctx}</span> : null}
+                </div>
+              );
+            })
+          )
         ) : (
-          (root?.children || []).map((g) => renderNode(g, 0))
-        )}
-
-        {linkedRoots.length > 0 && (
           <>
-            <div className="picker-section" title="Groups you opened from a link (not owned by you)">Linked groups</div>
-            {linkedRoots.map((g) => renderNode(g as Group, 0))}
+            {creatingParent === ROOT ? createRow(ROOT, 0) : null}
+            {root?.loading && !root?.children ? (
+              <div className="pad muted">Loading groups…</div>
+            ) : (root?.children || []).length === 0 && creatingParent !== ROOT ? (
+              <div className="pad muted">No groups yet. Create one with “＋ New”.</div>
+            ) : (
+              (root?.children || []).map((g) => renderNode(g, 0))
+            )}
+
+            {linkedRoots.length > 0 && (
+              <>
+                <div className="picker-section" title="Groups you opened from a link (not owned by you)">Linked groups</div>
+                {linkedRoots.map((g) => renderNode(g as Group, 0))}
+              </>
+            )}
           </>
         )}
       </div>

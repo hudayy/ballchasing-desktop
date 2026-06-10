@@ -5,6 +5,7 @@ import {
   detectSessions, suggestSessionNames, sessionTitle, sessionDiff, GroupRef
 } from "../lib/series";
 import SeriesModal from "./SeriesModal";
+import SelectionStats from "./SelectionStats";
 import Spinner from "./Spinner";
 import { ScoreText, DiffChip } from "./ScoreText";
 import { toast } from "../lib/toast";
@@ -38,6 +39,7 @@ export default function ReplayList({
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<{ suggestions: string[]; ids: string[] } | null>(null);
+  const [statsIds, setStatsIds] = useState<string[] | null>(null);
   const [dlMenu, setDlMenu] = useState(false);
   const [next, setNext] = useState<string | null>(null); // API's next-page URL
   const [loadingMore, setLoadingMore] = useState(false);
@@ -56,6 +58,13 @@ export default function ReplayList({
   }, [JSON.stringify(params)]);
 
   useEffect(() => { setSelected(new Set()); load(); }, [load]);
+
+  // reload when replays change elsewhere (e.g. dropped onto a tree group)
+  useEffect(() => {
+    const h = () => load(true);
+    window.addEventListener("bc:replays-changed", h);
+    return () => window.removeEventListener("bc:replays-changed", h);
+  }, [load]);
 
   // periodic background re-check + refresh on window focus — skipped once the
   // user has paged deeper, so a refresh doesn't throw away loaded pages
@@ -220,7 +229,19 @@ export default function ReplayList({
     const right = us.present ? us.theirs : sm.orange.goals;
     const cellClass = "score-cell" + (us.present ? (us.won ? " win" : " loss") : "");
     return (
-      <div className="replay-row" key={r.id} onClick={() => onOpenReplay(r.id)}>
+      <div
+        className="replay-row"
+        key={r.id}
+        onClick={() => onOpenReplay(r.id)}
+        draggable
+        onDragStart={(e) => {
+          // drag the whole selection if this row is part of it
+          const ids = selected.has(r.id) ? Array.from(selected) : [r.id];
+          e.dataTransfer.setData("application/x-replay-ids", JSON.stringify(ids));
+          e.dataTransfer.effectAllowed = "copy";
+        }}
+        title="Drag onto a group in the sidebar to add"
+      >
         <input type="checkbox" className="chk" checked={selected.has(r.id)} readOnly
           onClick={(e) => { e.stopPropagation(); onCheck(r.id, (e as any).shiftKey); }} />
         <div className={cellClass} title={us.present ? `you ${left}–${right}` : `${left}–${right}`}>
@@ -291,6 +312,7 @@ export default function ReplayList({
         {selected.size > 0 && (
           <>
             <span className="muted">{selected.size} selected</span>
+            <button title="Combined stats for the selected replays" onClick={() => setStatsIds(Array.from(selected))} disabled={busy}>📊 Stats</button>
             <button className="primary" onClick={createFromSelection} disabled={busy}>＋ Add to group…</button>
             <span className="dl-wrap">
               <button title="Download .replay files" onClick={() => setDlMenu((v) => !v)} disabled={busy} aria-label="Download">
@@ -333,6 +355,7 @@ export default function ReplayList({
           onClose={() => setModal(null)}
           onCreated={() => { setSelected(new Set()); load(true); onGroupCreated && onGroupCreated(); }} />
       )}
+      {statsIds && <SelectionStats ids={statsIds} onClose={() => setStatsIds(null)} />}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import StatTable, { StatRow } from "./StatTable";
 import Spinner from "./Spinner";
 import { TABS, colValue } from "../lib/columns";
+import { buildCsv, csvFilename } from "../lib/csv";
+import { toast } from "../lib/toast";
 
 export default function ReplayDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [data, setData] = useState<any>(null);
@@ -50,6 +52,17 @@ export default function ReplayDetail({ id, onBack }: { id: string; onBack: () =>
         <span className="score" style={{ color: "#5aa9ff" }}>{data.blue?.name || "Blue"} {goals(data.blue)}</span>
         <span className="muted">–</span>
         <span className="score" style={{ color: "#ff8a5a" }}>{goals(data.orange)} {data.orange?.name || "Orange"}</span>
+        <button
+          title="Export this table as CSV"
+          onClick={async () => {
+            const r = await window.api.saveTextFile(
+              csvFilename([data.title || data.replay_title || id, tab.label]),
+              buildCsv("Player", columns, allRows)
+            );
+            if (r.ok) toast("Exported to " + r.path, "success");
+            else if (!r.canceled) toast("Export failed: " + (r.error || "unknown"), "error");
+          }}
+        >⤓ CSV</button>
         <button onClick={() => window.api.openExternal(`https://ballchasing.com/replay/${id}`)}>Open on web ↗</button>
       </div>
       <div className="subtabs cats">

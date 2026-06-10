@@ -1,13 +1,29 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Spinner from "./Spinner";
+import { toast } from "../lib/toast";
 
 // Large upload target at the top of the sidebar: drop .replay files onto it, or
 // click to browse (opens in the Demos folder by default). Uploads use the
-// uploading account's key when separate accounts are configured.
+// uploading account's key when separate accounts are configured. The
+// auto-upload toggle watches the Demos folder and uploads new replays as
+// Rocket League saves them.
 export default function UploadZone({ onUploaded }: { onUploaded?: () => void }) {
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  const [auto, setAuto] = useState(false);
+
+  useEffect(() => { window.api.getAutoUpload().then((r) => setAuto(!!r.enabled)); }, []);
+  useEffect(() => window.api.onAutoUpload((ev) => {
+    if (ev.ok && !ev.duplicate) { toast(`Auto-uploaded ${ev.file}`, "success"); onUploaded && onUploaded(); }
+    else if (!ev.ok) toast(`Auto-upload failed for ${ev.file}: ${ev.error || "unknown"}`, "error");
+  }), []);
+
+  const toggleAuto = async () => {
+    const r = await window.api.setAutoUpload(!auto);
+    setAuto(!!r.enabled);
+    if (r.enabled && r.watching === false) toast("Auto-upload is on, but no Demos folder was found — set one in Settings.", "error");
+  };
 
   const uploadPaths = async (paths: string[]) => {
     const replays = paths.filter((p) => p.toLowerCase().endsWith(".replay"));
@@ -60,6 +76,11 @@ export default function UploadZone({ onUploaded }: { onUploaded?: () => void }) 
         <div><b>Upload replays</b></div>
         <div className="muted" style={{ fontSize: 10 }}>{progress || "drop files or click to browse"}</div>
       </div>
+      <label className="auto-up" title="Watch the Demos folder and upload new replays automatically"
+        onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" className="chk" checked={auto} onChange={toggleAuto} />
+        Auto-upload new replays
+      </label>
     </div>
   );
 }

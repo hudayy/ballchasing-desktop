@@ -259,6 +259,21 @@ input[type="checkbox"].chk:checked::after {
 .dl-menu button { text-align: left; border: none; background: transparent; padding: 7px 10px; border-radius: 6px; }
 .dl-menu button:hover { background: var(--bg-3); }
 
+/* ---- Group tree quick-filter ---- */
+.tree-filter { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.tree-filter input { flex: 1; min-width: 0; font-size: 12px; padding: 4px 8px; }
+.tree-filter button { padding: 2px 8px; }
+
+/* ---- Auto-upload toggle inside the upload zone ---- */
+.upload-zone { flex-wrap: wrap; }
+.upload-zone .auto-up { flex: 1 0 100%; display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-dim); cursor: pointer; margin-top: 2px; }
+.upload-zone .auto-up:hover { color: var(--text); }
+
+/* ---- Combined-stats modal (selection stats) ---- */
+.modal.xl { width: min(1200px, 94vw); }
+.selstats-table { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 4px; display: flex; }
+
 /* ---- Toasts (non-blocking notifications, replace alert()) ---- */
 .toasts { position: fixed; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 100; }
 .toast { background: var(--bg-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);

@@ -3,6 +3,8 @@ import StatTable, { StatRow } from "./StatTable";
 import ReplayList from "./ReplayList";
 import Spinner from "./Spinner";
 import { TABS, colValue } from "../lib/columns";
+import { buildCsv, csvFilename } from "../lib/csv";
+import { toast } from "../lib/toast";
 
 type Section = "players" | "teams" | "replays";
 
@@ -88,6 +90,18 @@ export default function GroupDetail({
             <button className={mode === "game_average" ? "on" : ""} onClick={() => setMode("game_average")}>Average</button>
             <button className={mode === "cumulative" ? "on" : ""} onClick={() => setMode("cumulative")}>Total</button>
           </div>
+          <button
+            title="Export this table as CSV"
+            onClick={async () => {
+              const rows = section === "players" ? playerRows : teamRows;
+              const r = await window.api.saveTextFile(
+                csvFilename([group?.name || groupId, section, tab.label, mode === "game_average" ? "Average" : "Total"]),
+                buildCsv(section === "players" ? "Player" : "Team", columns, rows)
+              );
+              if (r.ok) toast("Exported to " + r.path, "success");
+              else if (!r.canceled) toast("Export failed: " + (r.error || "unknown"), "error");
+            }}
+          >⤓ CSV</button>
         </div>
       )}
 
