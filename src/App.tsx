@@ -11,6 +11,7 @@ import Settings from "./components/Settings";
 import UploadZone from "./components/UploadZone";
 import LinkOpener from "./components/LinkOpener";
 import { ScoreText } from "./components/ScoreText";
+import Toasts from "./components/Toasts";
 
 export default function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
@@ -71,7 +72,10 @@ export default function App() {
         <UpdateBadge />
         <span className="identity">{me.name ? <>signed in as <b>{me.name}</b></> : "signed in"}{separateAccounts ? <span className="muted"> · separate upload account</span> : null}</span>
         <button title="Settings" onClick={() => setSettingsOpen(true)}>⚙</button>
-        <button onClick={async () => { await window.api.clearKey(); setAuthed(false); }}>Sign out</button>
+        <button onClick={async () => {
+          if (!confirm("Sign out? This removes the stored API key(s) from this device.")) return;
+          await window.api.clearKey(); setAuthed(false);
+        }}>Sign out</button>
       </div>
 
       <div className="body">
@@ -122,6 +126,7 @@ export default function App() {
           onChanged={async () => { const st = await window.api.keyStatus(); applyStatus(st); setBrowseKey((n) => n + 1); refreshTree(); }}
         />
       )}
+      <Toasts />
     </div>
   );
 }

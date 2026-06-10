@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import GroupPickerTree from "./GroupPickerTree";
 import Spinner from "./Spinner";
 
@@ -22,6 +22,13 @@ export default function SeriesModal({
   // Only dismiss when a click both STARTS and ENDS on the backdrop itself, so
   // drag-selecting text inside a field and releasing outside doesn't close it.
   const downOnBackdrop = useRef(false);
+
+  // Esc closes the modal (unless a submit is in flight)
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [busy, onClose]);
 
   const addReplays = async (gid: string) => {
     let done = 0;

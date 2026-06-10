@@ -100,7 +100,7 @@ export default function GroupDetail({
       ) : section === "players" ? (
         <StatTable columns={columns} rows={playerRows} />
       ) : (
-        <StatTable columns={columns} rows={teamRows} />
+        <StatTable columns={columns} rows={teamRows} nameHeader="Team" />
       )}
     </div>
   );

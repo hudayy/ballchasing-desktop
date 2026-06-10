@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { addLinkedGroup, emitStoreChange } from "../lib/store";
+import { toast } from "../lib/toast";
 
 // Parse a ballchasing.com replay/group link (or a bare id) into { type, id }.
 export function parseBcLink(input: string): { type: "replay" | "group"; id: string } | null {
@@ -26,12 +27,13 @@ export default function LinkOpener({
     const parsed = parseBcLink(text ?? value);
     if (!parsed) { setErr(true); return; }
     setErr(false);
-    setValue("");
-    if (parsed.type === "replay") onOpenReplay(parsed.id);
+    if (parsed.type === "replay") { setValue(""); onOpenReplay(parsed.id); }
     else {
-      // resolve the group name for a nicer header; fall back to the id
-      let name = parsed.id;
-      try { const r = await window.api.getGroup(parsed.id); if (r.ok && r.data?.name) name = r.data.name; } catch {}
+      // validate the group exists before pinning it into the tree
+      const r = await window.api.getGroup(parsed.id).catch(() => ({ ok: false } as any));
+      if (!r.ok) { toast("Couldn't open that group — the link may be wrong or the group private.", "error"); setErr(true); return; }
+      const name = r.data?.name || parsed.id;
+      setValue("");
       // pin it into the tree's "Linked groups" section so it's browsable
       addLinkedGroup({ id: parsed.id, name });
       emitStoreChange();

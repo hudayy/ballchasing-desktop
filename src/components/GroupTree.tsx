@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange, getLinkedGroups, removeLinkedGroup } from "../lib/store";
 import { cellColor, columnStats } from "../lib/heat";
 import { ScoreText } from "./ScoreText";
+import { toast } from "../lib/toast";
 
 // Total replays in a group's subtree (indirect already includes direct on ballchasing).
 const groupTotal = (g: { direct_replays?: number; indirect_replays?: number }) =>
@@ -31,6 +32,8 @@ export default function GroupTree({
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [creatingParent, setCreatingParent] = useState<string | null>(null); // inline new-subgroup row
   const [newName, setNewName] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null); // inline rename
+  const [renameVal, setRenameVal] = useState("");
   const [, forceRender] = useState(0);
   const groupById = useRef<Record<string, Group>>({});
   const dragging = useRef<string[]>([]);
@@ -80,9 +83,9 @@ export default function GroupTree({
     if (!st?.loaded) await loadChildren(g.id, false, isExternal(g.id));
   };
 
-  // Owned groups know they have subgroups via indirect counts. Linked groups
-  // often lack counts, so always allow expanding them.
-  const hasChildren = (g: Group) => isExternal(g.id) || (g.indirect_replays || 0) > 0;
+  // Replay counts can't tell us whether a group has EMPTY subgroups, so every
+  // group is expandable; an empty result shows a brief "(no subgroups)" row.
+  const hasChildren = (_g: Group) => true;
 
   // flattened order of currently-visible nodes (for shift-range select)
   const visibleOrder = (): string[] => {
@@ -136,7 +139,7 @@ export default function GroupTree({
       const res = await window.api.patchGroup(id, { parent: targetId });
       if (!res.ok) failed++;
     }
-    if (failed) alert(`${failed}/${ids.length} move(s) failed (ballchasing may not allow changing a group's parent).`);
+    if (failed) toast(`${failed}/${ids.length} move(s) failed (ballchasing may not allow changing a group's parent).`, "error");
     setMultiSel(new Set());
     await loadChildren(ROOT, true);
     if (target && nodes[target.id]?.loaded) { setNode(target.id, { expanded: true }); await loadChildren(target.id, true); }
@@ -160,7 +163,7 @@ export default function GroupTree({
     if (parentId !== ROOT) body.parent = parentId;
     cancelCreate();
     const res = await window.api.createGroup(body);
-    if (!res.ok) { alert("Create failed: " + res.error); return; }
+    if (!res.ok) { toast("Create failed: " + res.error, "error"); return; }
     if (parentId !== ROOT) { setNode(parentId, { expanded: true }); await loadChildren(parentId, true); }
     else await loadChildren(ROOT, true);
   };
@@ -180,18 +183,25 @@ export default function GroupTree({
     </div>
   );
 
-  const renameGroup = async (g: Group) => {
-    const name = prompt("Rename group:", g.name);
-    if (!name || name === g.name) return;
-    const res = await window.api.patchGroup(g.id, { name });
-    if (!res.ok) { alert("Rename failed: " + res.error); return; }
+  // ---- inline rename (window.prompt is not supported in Electron) ----
+  const startRename = (g: Group) => { setRenamingId(g.id); setRenameVal(g.name); };
+  const cancelRename = () => setRenamingId(null);
+  const commitRename = async () => {
+    const id = renamingId;
+    const name = renameVal.trim();
+    setRenamingId(null);
+    if (!id || !name) return;
+    const g = groupById.current[id];
+    if (!g || name === g.name) return;
+    const res = await window.api.patchGroup(id, { name });
+    if (!res.ok) { toast("Rename failed: " + res.error, "error"); return; }
     g.name = name; forceRender((n) => n + 1);
   };
 
   const deleteGroup = async (g: Group) => {
     if (!confirm(`Delete group "${g.name}"? This cannot be undone.`)) return;
     const res = await window.api.deleteGroup(g.id);
-    if (!res.ok) { alert("Delete failed: " + res.error); return; }
+    if (!res.ok) { toast("Delete failed: " + res.error, "error"); return; }
     if (selectedId === g.id) onSelect(null);
     await loadChildren(ROOT, true);
   };
@@ -231,7 +241,20 @@ export default function GroupTree({
           <span className="twisty" onClick={(e) => { e.stopPropagation(); if (expandable) toggle(g); }}>
             {expandable ? (st?.expanded ? "▾" : "▸") : ""}
           </span>
-          <span className="name" title={g.name}><ScoreText text={g.name} /></span>
+          {renamingId === g.id ? (
+            <input
+              className="create-input"
+              autoFocus
+              value={renameVal}
+              onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => e.currentTarget.select()}
+              onChange={(e) => setRenameVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") commitRename(); else if (e.key === "Escape") cancelRename(); }}
+              onBlur={commitRename}
+            />
+          ) : (
+            <span className="name" title={g.name}><ScoreText text={g.name} /></span>
+          )}
           {hasCount ? (
             <span className="badge" title="replays (including subgroups)" style={pillBg ? { background: pillBg, color: "#e7eefb" } : undefined}>{total}</span>
           ) : null}
@@ -248,7 +271,7 @@ export default function GroupTree({
             ) : (
               <>
                 <button title="New subgroup" onClick={(e) => { e.stopPropagation(); startCreate(g.id); }}>＋</button>
-                <button title="Rename" onClick={(e) => { e.stopPropagation(); renameGroup(g); }}>✎</button>
+                <button title="Rename" onClick={(e) => { e.stopPropagation(); startRename(g); }}>✎</button>
                 <button title="Delete" onClick={(e) => { e.stopPropagation(); deleteGroup(g); }}>🗑</button>
               </>
             )}
@@ -259,6 +282,8 @@ export default function GroupTree({
             {creatingParent === g.id ? createRow(g.id, depth + 1) : null}
             {st.loading && !st.children ? (
               <div className="tree-row" style={{ paddingLeft: 6 + (depth + 1) * 15 }}><span className="skeleton">loading…</span></div>
+            ) : st.loaded && (st.children || []).length === 0 && creatingParent !== g.id ? (
+              <div className="tree-row" style={{ paddingLeft: 6 + (depth + 1) * 15 }}><span className="muted" style={{ fontSize: 11 }}>(no subgroups)</span></div>
             ) : (
               (st.children || []).map((c) => renderNode(c, depth + 1))
             )}

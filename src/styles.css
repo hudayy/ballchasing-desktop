@@ -259,6 +259,18 @@ input[type="checkbox"].chk:checked::after {
 .dl-menu button { text-align: left; border: none; background: transparent; padding: 7px 10px; border-radius: 6px; }
 .dl-menu button:hover { background: var(--bg-3); }
 
+/* ---- Toasts (non-blocking notifications, replace alert()) ---- */
+.toasts { position: fixed; right: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 100; }
+.toast { background: var(--bg-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 9px 12px; max-width: 380px; font-size: 12px; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45); animation: toast-in 0.15s ease-out; word-break: break-word; }
+.toast.success { border-left-color: var(--good); }
+.toast.error { border-left-color: var(--danger); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* "Load more" pagination button at the bottom of the replay list */
+.loadmore { display: block; margin: 12px auto 16px; padding: 6px 18px; }
+
 /* settings + uploader picker */
 .settings-section { padding: 12px 0; border-top: 1px solid var(--border); }
 .settings-label { font-weight: 600; margin-bottom: 6px; }

@@ -137,6 +137,14 @@ function loadCache() {
   try {
     if (fs.existsSync(CACHE_FILE)) cache = JSON.parse(fs.readFileSync(CACHE_FILE, "utf8"));
   } catch { cache = {}; }
+  // prune entries older than 7 days so the cache file doesn't grow forever
+  const cutoff = Date.now() - 7 * 24 * 3600_000;
+  let pruned = false;
+  for (const k of Object.keys(cache)) {
+    const e = cache[k];
+    if (!e || typeof e.ts !== "number" || e.ts < cutoff) { delete cache[k]; pruned = true; }
+  }
+  if (pruned) persistCacheSoon();
 }
 
 let cacheDirty = false;
@@ -256,6 +264,11 @@ async function apiJson(method, pathAndQuery, body) {
     }
     return json;
   });
+}
+
+// Strip characters Windows forbids in filenames.
+function safeFilename(name) {
+  return String(name).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").replace(/\s+/g, " ").trim().slice(0, 150);
 }
 
 function buildQuery(params) {
@@ -556,6 +569,7 @@ function registerIpc() {
       if (pick.canceled || !pick.filePaths[0]) return { ok: false, canceled: true };
       dir = pick.filePaths[0];
     }
+    const names = (opts && opts.names) || {};
     let done = 0, failed = 0;
     for (const id of ids) {
       try {
@@ -565,7 +579,9 @@ function registerIpc() {
           if (!res.ok) throw new Error("HTTP " + res.status);
           return Buffer.from(await res.arrayBuffer());
         });
-        fs.writeFileSync(path.join(dir, id + ".replay"), buf);
+        // friendly filename from the renderer ("2026-06-08 21.43 - Title"), else the id
+        const base = names[id] ? safeFilename(names[id]) : id;
+        fs.writeFileSync(path.join(dir, (base || id) + ".replay"), buf);
         done++;
       } catch { failed++; }
     }
@@ -584,11 +600,18 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: "#0e1116",
     title: "Ballchasing Desktop",
+    autoHideMenuBar: true, // hide the default menu bar (Alt shows it for devtools)
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
+  });
+
+  // any window.open / target=_blank goes to the system browser, never a child window
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:/i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
   });
 
   const devUrl = process.env.ELECTRON_START_URL;

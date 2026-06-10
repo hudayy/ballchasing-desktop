@@ -42,7 +42,17 @@ export default function ReplayBrowser({
   const apply = () => {
     const merged = { ...f };
     if (onlyMine && me?.name && !merged["player-name"]) merged["player-name"] = me.name;
+    else if (!onlyMine && merged["player-name"] === me?.name) delete merged["player-name"];
     setApplied(merged);
+  };
+  // Toggling the box adds/removes the auto player-name filter and applies immediately.
+  const toggleOnlyMine = (checked: boolean) => {
+    setOnlyMine(checked);
+    const n = { ...f };
+    if (checked && me?.name) n["player-name"] = me.name;
+    else if (!checked && n["player-name"] === me?.name) delete n["player-name"];
+    setF(n);
+    setApplied(n);
   };
 
   return (
@@ -87,7 +97,7 @@ export default function ReplayBrowser({
           </select>
         </label>
         <label className="filter-check">
-          <input type="checkbox" className="chk" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} />
+          <input type="checkbox" className="chk" checked={onlyMine} onChange={(e) => toggleOnlyMine(e.target.checked)} />
           Only games I'm in
         </label>
         <button className="primary" onClick={apply}>Apply filters</button>

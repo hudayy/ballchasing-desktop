@@ -43,7 +43,8 @@ export default function GroupPickerTree({
 
   const renderNode = (g: Group, depth: number): React.ReactNode => {
     const st = nodes[g.id];
-    const expandable = (g.indirect_replays || 0) > 0;
+    // replay counts can't reveal empty subgroups, so every group is expandable
+    const expandable = true;
     return (
       <div key={g.id}>
         <div className={"tree-row" + (selectedId === g.id ? " selected" : "")} style={{ paddingLeft: 6 + depth * 14 }}

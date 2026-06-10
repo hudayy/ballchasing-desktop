@@ -7,7 +7,7 @@ declare global {
     setKey(key: string): Promise<{ ok: boolean; ping?: any; tier?: string; rps?: number; error?: string; status?: number; identity?: Identity }>;
     setUploaderKey(key: string): Promise<{ ok: boolean; uploaderName?: string; error?: string; status?: number }>;
     clearUploader(): Promise<{ ok: boolean }>;
-    getIdentity(): Promise<{ identity: Identity | null; isPrimaryUploader: boolean }>;
+    getIdentity(): Promise<{ identity: Identity | null; separateAccounts: boolean }>;
     clearKey(): Promise<{ ok: boolean }>;
     getDemosFolder(): Promise<{ folder: string | null; detected: string | null }>;
     setDemosFolder(): Promise<{ ok: boolean; folder?: string; canceled?: boolean }>;
@@ -18,7 +18,7 @@ declare global {
     getReplay(id: string, opts?: any): Promise<ApiResult<any>>;
     patchReplay(id: string, body: any): Promise<ApiResult<any>>;
     deleteReplay(id: string): Promise<ApiResult<any>>;
-    downloadReplays(ids: string[], opts?: { mode?: "demos" | "choose" }): Promise<{ ok: boolean; dir?: string; done?: number; failed?: number; canceled?: boolean; error?: string }>;
+    downloadReplays(ids: string[], opts?: { mode?: "demos" | "choose"; names?: Record<string, string> }): Promise<{ ok: boolean; dir?: string; done?: number; failed?: number; canceled?: boolean; error?: string }>;
 
     listGroups(params?: any, opts?: any): Promise<ApiResult<any>>;
     getGroup(id: string, opts?: any): Promise<ApiResult<any>>;

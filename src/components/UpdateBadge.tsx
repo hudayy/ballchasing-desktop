@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { toast } from "../lib/toast";
 
 // Small top-bar indicator for auto-update state + a manual check.
 export default function UpdateBadge() {
@@ -28,7 +29,13 @@ export default function UpdateBadge() {
     <span
       className={"updatebadge" + (status?.state === "ready" ? " ready" : "")}
       title="Check for updates"
-      onClick={() => window.api.checkForUpdates()}
+      onClick={async () => {
+        const r = await window.api.checkForUpdates();
+        if (!r.ok && r.reason === "not-packaged") toast("Updates are disabled in dev builds.");
+        else if (!r.ok) toast("Update check failed: " + (r.error || "unknown"), "error");
+        else if (r.version && r.current && r.version !== r.current) toast(`Update v${r.version} found — downloading…`);
+        else toast(`You're up to date (v${r.current || r.version}).`, "success");
+      }}
     >
       v{version}{text ? ` · ${text}` : ""}
     </span>

@@ -16,6 +16,13 @@ export default function Settings({ onClose, onChanged }: { onClose: () => void; 
   };
   useEffect(refresh, []);
 
+  // Esc closes the modal (unless a key save is in flight)
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [busy, onClose]);
+
   const demoPath = demos?.folder || demos?.detected || null;
 
   const saveUploader = async () => {

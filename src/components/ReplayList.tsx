@@ -7,6 +7,7 @@ import {
 import SeriesModal from "./SeriesModal";
 import Spinner from "./Spinner";
 import { ScoreText, DiffChip } from "./ScoreText";
+import { toast } from "../lib/toast";
 
 interface Cluster {
   key: string;
@@ -38,25 +39,51 @@ export default function ReplayList({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<{ suggestions: string[]; ids: string[] } | null>(null);
   const [dlMenu, setDlMenu] = useState(false);
+  const [next, setNext] = useState<string | null>(null); // API's next-page URL
+  const [loadingMore, setLoadingMore] = useState(false);
   const anchorRef = useRef<string | null>(null);
+  const pagesRef = useRef(1);
 
   const load = useCallback(async (force = false) => {
     setLoading(true); setErr(null);
     const res = await window.api.listReplays(params, force ? { force: true } : undefined);
     setLoading(false);
-    if (res.ok) setReplays((res.data && res.data.list) || []);
-    else setErr(res.error || "Failed to load replays");
+    if (res.ok) {
+      setReplays((res.data && res.data.list) || []);
+      setNext((res.data && res.data.next) || null);
+      pagesRef.current = 1;
+    } else setErr(res.error || "Failed to load replays");
   }, [JSON.stringify(params)]);
 
   useEffect(() => { setSelected(new Set()); load(); }, [load]);
 
-  // periodic background re-check + refresh on window focus (item 1)
+  // periodic background re-check + refresh on window focus — skipped once the
+  // user has paged deeper, so a refresh doesn't throw away loaded pages
   useEffect(() => {
-    const h = setInterval(() => load(true), 120000);
-    const onFocus = () => load(true);
-    window.addEventListener("focus", onFocus);
-    return () => { clearInterval(h); window.removeEventListener("focus", onFocus); };
+    const refresh = () => { if (pagesRef.current === 1) load(true); };
+    const h = setInterval(refresh, 120000);
+    window.addEventListener("focus", refresh);
+    return () => { clearInterval(h); window.removeEventListener("focus", refresh); };
   }, [load]);
+
+  // fetch the next page (the API caps each response at 200) and append
+  const loadMore = async () => {
+    if (!next || loadingMore) return;
+    setLoadingMore(true);
+    const p: any = {};
+    try { new URL(next).searchParams.forEach((v, k) => { p[k] = k in p ? ([] as string[]).concat(p[k], v) : v; }); }
+    catch { setLoadingMore(false); return; }
+    const res = await window.api.listReplays(p);
+    setLoadingMore(false);
+    if (!res.ok) { toast("Failed to load more: " + (res.error || "unknown"), "error"); return; }
+    const list: any[] = (res.data && res.data.list) || [];
+    setReplays((prev) => {
+      const have = new Set(prev.map((r: any) => r.id));
+      return [...prev, ...list.filter((r: any) => !have.has(r.id))];
+    });
+    setNext((res.data && res.data.next) || null);
+    pagesRef.current++;
+  };
 
   const summaries: ReplaySummary[] = useMemo(() => replays.map(toSummary), [replays]);
 
@@ -136,27 +163,44 @@ export default function ReplayList({
   };
 
   // ---- bulk actions ----
+  // friendly download filename: "2026-06-08 21.43 - Title"
+  const downloadName = (r: any): string => {
+    const d = r.date ? new Date(r.date) : null;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp = d && !isNaN(d.getTime())
+      ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())}`
+      : "";
+    const title = r.replay_title || r.map_name || r.id;
+    return stamp ? `${stamp} - ${title}` : title;
+  };
   const doDownload = async (mode: "choose" | "demos") => {
     setDlMenu(false);
     setBusy(true);
-    const res = await window.api.downloadReplays(Array.from(selected), { mode });
+    const ids = Array.from(selected);
+    const names: Record<string, string> = {};
+    for (const id of ids) if (byId[id]) names[id] = downloadName(byId[id]);
+    const res = await window.api.downloadReplays(ids, { mode, names });
     setBusy(false);
-    if (res.ok) alert(`Downloaded ${res.done} replay(s)${res.failed ? `, ${res.failed} failed` : ""} to:\n${res.dir}`);
-    else if (!res.canceled) alert("Download failed: " + (res.error || "unknown"));
+    if (res.ok) toast(`Downloaded ${res.done} replay(s)${res.failed ? `, ${res.failed} failed` : ""} to ${res.dir}`, res.failed ? "info" : "success");
+    else if (!res.canceled) toast("Download failed: " + (res.error || "unknown"), "error");
   };
   const doDelete = async () => {
     const ids = Array.from(selected);
     if (!confirm(`Delete ${ids.length} replay(s)? This cannot be undone.`)) return;
     setBusy(true);
-    for (const id of ids) await window.api.deleteReplay(id);
+    let failed = 0;
+    for (const id of ids) { const r = await window.api.deleteReplay(id); if (!r.ok) failed++; }
     setBusy(false); setSelected(new Set()); load(true);
+    toast(failed ? `Deleted ${ids.length - failed}, ${failed} failed.` : `Deleted ${ids.length} replay(s).`, failed ? "error" : "success");
   };
   const doVisibility = async (vis: string) => {
     if (!vis) return;
     const ids = Array.from(selected);
     setBusy(true);
-    for (const id of ids) await window.api.patchReplay(id, { visibility: vis });
+    let failed = 0;
+    for (const id of ids) { const r = await window.api.patchReplay(id, { visibility: vis }); if (!r.ok) failed++; }
     setBusy(false); load(true);
+    toast(failed ? `Set visibility on ${ids.length - failed}, ${failed} failed.` : `Set ${ids.length} replay(s) to ${vis}.`, failed ? "error" : "success");
   };
 
   if (loading && replays.length === 0) return <div className="center"><Spinner label="Loading replays…" /></div>;
@@ -242,6 +286,7 @@ export default function ReplayList({
           {existingClusters ? ` · ${existingClusters} already grouped` : ""}
           {loading ? " · " : ""}{loading ? <Spinner small /> : null}
         </span>
+        <button title="Refresh" onClick={() => load(true)} disabled={loading}>⟳</button>
         <div style={{ flex: 1 }} />
         {selected.size > 0 && (
           <>
@@ -274,7 +319,14 @@ export default function ReplayList({
         )}
       </div>
 
-      <div style={{ overflow: "auto", flex: 1, padding: "0 8px" }}>{blocks}</div>
+      <div style={{ overflow: "auto", flex: 1, padding: "0 8px" }}>
+        {blocks}
+        {next && (
+          <button className="loadmore" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? <Spinner small /> : "Load more replays"}
+          </button>
+        )}
+      </div>
 
       {modal && (
         <SeriesModal suggestions={modal.suggestions} replayIds={modal.ids}

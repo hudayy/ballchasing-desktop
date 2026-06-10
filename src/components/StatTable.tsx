@@ -12,10 +12,12 @@ export interface StatRow {
 
 export default function StatTable({
   columns,
-  rows
+  rows,
+  nameHeader = "Player"
 }: {
   columns: Col[];
   rows: StatRow[];
+  nameHeader?: string;
 }) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -47,7 +49,7 @@ export default function StatTable({
       <table className="stat">
         <thead>
           <tr>
-            <th onClick={() => setSortKey(null)} title="Name">Player</th>
+            <th onClick={() => setSortKey(null)} title="Name">{nameHeader}</th>
             {columns.map((c) => (
               <th key={c.id} title={c.label} onClick={() => toggleSort(c.id)}>
                 {c.label}{sortKey === c.id ? (sortDir === "asc" ? " ▲" : " ▼") : ""}
