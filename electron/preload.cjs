@@ -34,13 +34,6 @@ contextBridge.exposeInMainWorld("api", {
   getMaps: () => invoke("maps:get"),
   pickUploadFiles: () => invoke("upload:pick"),
   uploadReplay: (filePath, opts) => invoke("upload:replay", filePath, opts),
-  getAutoUpload: () => invoke("autoupload:get"),
-  setAutoUpload: (enabled) => invoke("autoupload:set", enabled),
-  onAutoUpload: (cb) => {
-    const handler = (_e, payload) => cb(payload);
-    ipcRenderer.on("autoupload:event", handler);
-    return () => ipcRenderer.removeListener("autoupload:event", handler);
-  },
   saveTextFile: (defaultName, content) => invoke("file:saveText", defaultName, content),
   pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return file && file.path || ""; } },
   openExternal: (url) => invoke("open-external", url),

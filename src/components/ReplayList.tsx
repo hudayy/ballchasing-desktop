@@ -211,6 +211,19 @@ export default function ReplayList({
     setBusy(false); load(true);
     toast(failed ? `Set visibility on ${ids.length - failed}, ${failed} failed.` : `Set ${ids.length} replay(s) to ${vis}.`, failed ? "error" : "success");
   };
+  // Remove the selected replays from the group currently being viewed. ballchasing
+  // ungroups a replay when PATCHed with an empty group id.
+  const inGroup = !!(params && params.group);
+  const doUnassign = async () => {
+    const ids = Array.from(selected);
+    if (!confirm(`Remove ${ids.length} replay(s) from this group? (The replays themselves are kept.)`)) return;
+    setBusy(true);
+    let failed = 0;
+    for (const id of ids) { const r = await window.api.patchReplay(id, { group: "" }); if (!r.ok) failed++; }
+    setBusy(false); setSelected(new Set()); load(true);
+    onGroupCreated && onGroupCreated(); // refresh the sidebar tree counts
+    toast(failed ? `Removed ${ids.length - failed}, ${failed} failed.` : `Removed ${ids.length} replay(s) from the group.`, failed ? "error" : "success");
+  };
 
   if (loading && replays.length === 0) return <div className="center"><Spinner label="Loading replays…" /></div>;
   if (err) return <div className="pad" style={{ color: "#ff9a9d" }}>{err}</div>;
@@ -314,6 +327,7 @@ export default function ReplayList({
             <span className="muted">{selected.size} selected</span>
             <button title="Combined stats for the selected replays" onClick={() => setStatsIds(Array.from(selected))} disabled={busy}>📊 Stats</button>
             <button className="primary" onClick={createFromSelection} disabled={busy}>＋ Add to group…</button>
+            {inGroup && <button title="Remove the selected replays from this group" onClick={doUnassign} disabled={busy}>⊘ Remove from group</button>}
             <span className="dl-wrap">
               <button title="Download .replay files" onClick={() => setDlMenu((v) => !v)} disabled={busy} aria-label="Download">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "-2px" }}>

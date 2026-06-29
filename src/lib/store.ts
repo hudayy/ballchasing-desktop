@@ -68,6 +68,21 @@ export function isLinkedGroup(id: string): boolean {
   return read<KnownGroup[]>(LINKED_KEY, []).some((g) => g.id === id);
 }
 
+// --- expanded groups in the sidebar tree (mirrored by the add-to-group picker
+// so it opens with the same branches expanded) ---
+const EXPANDED_KEY = "bc.expandedGroups";
+export function getExpandedGroups(): string[] {
+  return read<string[]>(EXPANDED_KEY, []);
+}
+export function setGroupExpanded(id: string, expanded: boolean) {
+  const set = new Set(read<string[]>(EXPANDED_KEY, []));
+  if (expanded) set.add(id); else set.delete(id);
+  write(EXPANDED_KEY, Array.from(set));
+}
+export function setExpandedGroups(ids: string[]) {
+  write(EXPANDED_KEY, ids);
+}
+
 // simple pub/sub so favorite stars update across components
 const listeners = new Set<() => void>();
 export function onStoreChange(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; }

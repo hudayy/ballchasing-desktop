@@ -29,9 +29,6 @@ declare global {
     getMaps(): Promise<ApiResult<any>>;
     pickUploadFiles(): Promise<{ ok: boolean; files?: string[]; canceled?: boolean }>;
     uploadReplay(filePath: string, opts?: { visibility?: string; group?: string }): Promise<ApiResult<any> & { duplicate?: boolean }>;
-    getAutoUpload(): Promise<{ enabled: boolean; folder: string | null }>;
-    setAutoUpload(enabled: boolean): Promise<{ ok: boolean; enabled: boolean; watching?: boolean }>;
-    onAutoUpload(cb: (p: AutoUploadEvent) => void): () => void;
     saveTextFile(defaultName: string, content: string): Promise<{ ok: boolean; path?: string; canceled?: boolean; error?: string }>;
     pathForFile(file: File): string;
     openExternal(url: string): Promise<void>;
@@ -43,7 +40,6 @@ declare global {
   }
 
   type UpdateStatus = { state: "checking" | "available" | "none" | "downloading" | "ready" | "error"; version?: string; percent?: number; message?: string };
-  type AutoUploadEvent = { file: string; ok: boolean; duplicate?: boolean; error?: string };
 
   type ApiResult<T> = { ok: boolean; data?: T; error?: string; status?: number; cached?: boolean; stale?: boolean };
   type Identity = { steam_id?: string | null; name?: string | null };

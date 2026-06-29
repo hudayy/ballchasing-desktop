@@ -84,8 +84,7 @@ let config = {
   uploaderName: null,
   identity: null,
   separateAccounts: false,  // true => uses a separate uploading account
-  demosFolder: null,        // saved Rocket League Demos folder
-  autoUpload: false         // watch the Demos folder and auto-upload new replays
+  demosFolder: null         // saved Rocket League Demos folder
 };
 
 function loadConfig() {
@@ -109,9 +108,8 @@ function saveConfig() {
 
 function clearConfig() {
   apiKey = null; identity = null;
-  stopWatcher(); // no key, no auto-uploads
   const demos = config.demosFolder; // keep the demos folder across sign-out
-  config = { loginKey: null, uploaderKey: null, uploaderId: null, uploaderName: null, identity: null, separateAccounts: false, demosFolder: demos, autoUpload: false };
+  config = { loginKey: null, uploaderKey: null, uploaderId: null, uploaderName: null, identity: null, separateAccounts: false, demosFolder: demos };
   saveConfig();
 }
 
@@ -268,8 +266,7 @@ async function apiJson(method, pathAndQuery, body) {
   });
 }
 
-// Upload one .replay file with the uploading key. Shared by the manual upload
-// IPC handler and the Demos-folder auto-upload watcher. Throws on failure.
+// Upload one .replay file with the uploading key. Throws on failure.
 async function doUpload(filePath, opts) {
   const buf = fs.readFileSync(filePath);
   const form = new FormData();
@@ -292,49 +289,6 @@ async function doUpload(filePath, opts) {
   });
   cacheInvalidatePrefix("replays:list");
   return { ok: true, duplicate: data.status === 409, data: data.json };
-}
-
-// ---------------------------------------------------------------------------
-// Auto-upload watcher: when enabled, new .replay files appearing in the Demos
-// folder are uploaded automatically (Rocket League writes a replay there each
-// time the user saves one in-game).
-// ---------------------------------------------------------------------------
-let watcher = null;
-const autoUploaded = new Set(); // full paths already handled this run
-
-function sendToAll(channel, payload) {
-  for (const w of BrowserWindow.getAllWindows()) {
-    try { w.webContents.send(channel, payload); } catch {}
-  }
-}
-
-function stopWatcher() {
-  if (watcher) { try { watcher.close(); } catch {} watcher = null; }
-}
-
-function startWatcher() {
-  stopWatcher();
-  if (!config.autoUpload || !apiKey) return;
-  const dir = config.demosFolder || autoDemosFolder();
-  if (!dir || !fs.existsSync(dir)) return;
-  try {
-    watcher = fs.watch(dir, (_event, filename) => {
-      if (!filename || !filename.toLowerCase().endsWith(".replay")) return;
-      const full = path.join(dir, filename);
-      if (autoUploaded.has(full)) return;
-      autoUploaded.add(full);
-      // give Rocket League a few seconds to finish writing the file
-      setTimeout(async () => {
-        try {
-          if (!fs.existsSync(full)) { autoUploaded.delete(full); return; }
-          const r = await doUpload(full, { visibility: "public" });
-          sendToAll("autoupload:event", { file: filename, ok: true, duplicate: r.duplicate });
-        } catch (err) {
-          sendToAll("autoupload:event", { file: filename, ok: false, error: String(err && err.message || err) });
-        }
-      }, 4000);
-    });
-  } catch (e) { console.error("auto-upload watch failed", e); }
 }
 
 // Strip characters Windows forbids in filenames.
@@ -429,7 +383,6 @@ function registerIpc() {
     const pick = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"], title: "Select your Rocket League Demos folder" });
     if (pick.canceled || !pick.filePaths[0]) return { ok: false, canceled: true };
     config.demosFolder = pick.filePaths[0]; saveConfig();
-    if (config.autoUpload) startWatcher(); // re-point the watcher at the new folder
     return { ok: true, folder: config.demosFolder };
   });
 
@@ -591,18 +544,6 @@ function registerIpc() {
     catch (err) { return { ok: false, error: err.message, status: err.status }; }
   });
 
-  // ----- Auto-upload (watch the Demos folder) -----
-  ipcMain.handle("autoupload:get", () => ({
-    enabled: !!config.autoUpload,
-    folder: config.demosFolder || autoDemosFolder()
-  }));
-  ipcMain.handle("autoupload:set", (_e, enabled) => {
-    config.autoUpload = !!enabled;
-    saveConfig();
-    if (config.autoUpload) startWatcher(); else stopWatcher();
-    return { ok: true, enabled: !!config.autoUpload, watching: !!watcher };
-  });
-
   // ----- Save text (CSV export) -----
   ipcMain.handle("file:saveText", async (_e, defaultName, content) => {
     const pick = await dialog.showSaveDialog({
@@ -708,7 +649,6 @@ app.whenReady().then(() => {
   // If we already have a key, refresh tier in the background.
   if (apiKey) apiJson("GET", "/").then((p) => setTier(p && p.type)).catch(() => {});
   createWindow();
-  if (config.autoUpload) startWatcher();
   app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 

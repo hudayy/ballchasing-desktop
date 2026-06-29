@@ -264,12 +264,6 @@ input[type="checkbox"].chk:checked::after {
 .tree-filter input { flex: 1; min-width: 0; font-size: 12px; padding: 4px 8px; }
 .tree-filter button { padding: 2px 8px; }
 
-/* ---- Auto-upload toggle inside the upload zone ---- */
-.upload-zone { flex-wrap: wrap; }
-.upload-zone .auto-up { flex: 1 0 100%; display: flex; align-items: center; gap: 6px;
-  font-size: 11px; color: var(--text-dim); cursor: pointer; margin-top: 2px; }
-.upload-zone .auto-up:hover { color: var(--text); }
-
 /* ---- Combined-stats modal (selection stats) ---- */
 .modal.xl { width: min(1200px, 94vw); }
 .selstats-table { max-height: 60vh; overflow: auto; border: 1px solid var(--border); border-radius: 8px; margin-top: 4px; display: flex; }
@@ -299,5 +293,7 @@ input[type="checkbox"].chk:checked::after {
 .modal.wide { width: 560px; }
 .picker-box { border: 1px solid var(--border); border-radius: 8px; height: 260px; overflow: auto; background: var(--bg); }
 .picker-section { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 7px 8px 2px; }
+.picker-newrow { padding: 5px 6px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 1; }
+.picker-newrow button { width: 100%; font-size: 11px; padding: 4px 8px; }
 .picker .tree-row .name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .picker .tree-row .star { flex: 0 0 14px; text-align: center; }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange, getLinkedGroups, removeLinkedGroup, getKnownGroups, getTopParentName } from "../lib/store";
+import { isFavorite, toggleFavorite, registerKnownGroups, emitStoreChange, onStoreChange, getLinkedGroups, removeLinkedGroup, getKnownGroups, getTopParentName, setGroupExpanded, setExpandedGroups } from "../lib/store";
 import { cellColor, columnStats } from "../lib/heat";
 import { ScoreText } from "./ScoreText";
 import { toast } from "../lib/toast";
@@ -73,14 +73,22 @@ export default function GroupTree({
     return list;
   }, []);
 
-  useEffect(() => { groupById.current = {}; setNodes({}); externalIds.current = new Set(); loadChildren(ROOT, true); }, [refreshSignal, loadChildren]);
+  useEffect(() => { groupById.current = {}; setNodes({}); externalIds.current = new Set(); setExpandedGroups([]); loadChildren(ROOT, true); }, [refreshSignal, loadChildren]);
+
+  // reload top level when a group is created elsewhere (e.g. the add-to-group picker)
+  useEffect(() => {
+    const h = () => loadChildren(ROOT, true);
+    window.addEventListener("bc:groups-changed", h);
+    return () => window.removeEventListener("bc:groups-changed", h);
+  }, [loadChildren]);
 
   const isExternal = (id: string) => externalIds.current.has(id);
 
   const toggle = async (g: Group) => {
     const st = nodes[g.id];
-    if (st?.expanded) { setNode(g.id, { expanded: false }); return; }
+    if (st?.expanded) { setNode(g.id, { expanded: false }); setGroupExpanded(g.id, false); return; }
     setNode(g.id, { expanded: true });
+    setGroupExpanded(g.id, true); // mirror to the add-to-group picker
     if (!st?.loaded) await loadChildren(g.id, false, isExternal(g.id));
   };
 
